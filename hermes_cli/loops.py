@@ -222,15 +222,15 @@ class LoopState:
 
     def cadence_label(self) -> str:
         if self.mode == "self_paced":
-            live = f", currently {format_interval(self.current_delay)}" if self.current_delay else ""
-            return f"self-paced{live}"
-        return f"every {format_interval(self.interval_seconds)}"
+            live = f"，当前 {format_interval(self.current_delay)}" if self.current_delay else ""
+            return f"自适应{live}"
+        return f"每 {format_interval(self.interval_seconds)}"
 
     def remaining_label(self) -> str:
         if self.status != "active":
             return ""
         remaining = self.next_due_at - time.time()
-        return "due now" if remaining <= 0 else f"next in {format_interval(remaining)}"
+        return "即将触发" if remaining <= 0 else f"{format_interval(remaining)}后"
 
 
 _META_PREFIX = "loop:"
@@ -360,11 +360,11 @@ def migrate_loop_to_session(old_session_id: str, new_session_id: str, *, reason:
 
 
 def _ticks_label(n: int) -> str:
-    return f"{n} tick{'s' if n != 1 else ''}"
+    return f"{n} 次触发"
 
 
 def _dash(reason: Optional[str]) -> str:
-    return f" — {reason}" if reason else ""
+    return f"——{reason}" if reason else ""
 
 
 def response_signals_complete(response: str) -> bool:
@@ -416,26 +416,26 @@ class LoopManager:
     def status_line(self) -> str:
         s = self._state
         if s is None or s.status == "cleared":
-            return "No loop set. Start one with /loop [interval] <prompt>."
+            return "未设置循环。用 /loop [interval] <prompt> 启动一个。"
         fired = _ticks_label(s.ticks_fired)
         if s.times:
-            caps = [f"{s.ticks_fired}/{s.times} runs"]
+            caps = [f"已运行 {s.ticks_fired}/{s.times} 次"]
         elif s.max_ticks:
-            caps = [f"{s.ticks_fired}/{s.max_ticks} budget"]
+            caps = [f"已用 {s.ticks_fired}/{s.max_ticks} 次预算"]
         else:
             caps = [fired]
         if s.until:
-            caps.append(f"until: {s.until}")
+            caps.append(f"直到：{s.until}")
         meta = f"{s.cadence_label()}, {', '.join(caps)}"
         if s.status == "active":
             remaining = s.remaining_label()
-            tail = ", wakeup running" if s.awaiting_response else (f", {remaining}" if remaining else "")
-            return f"↻ Loop (active, {meta}{tail}): {s.prompt}"
+            tail = "，唤醒执行中" if s.awaiting_response else (f"，{remaining}" if remaining else "")
+            return f"↻ 循环（进行中，{meta}{tail}）：{s.prompt}"
         if s.status == "paused":
-            return f"⏸ Loop (paused, {meta}{_dash(s.paused_reason)}): {s.prompt}"
+            return f"⏸ 循环（已暂停，{meta}{_dash(s.paused_reason)}）：{s.prompt}"
         if s.status == "done":
-            return f"✓ Loop finished ({fired}{_dash(s.last_stop_reason)}): {s.prompt}"
-        return f"Loop ({s.status}, {meta}): {s.prompt}"
+            return f"✓ 循环已结束（{fired}{_dash(s.last_stop_reason)}）：{s.prompt}"
+        return f"循环（{s.status}，{meta}）：{s.prompt}"
 
     def set(
         self,
@@ -449,7 +449,7 @@ class LoopManager:
         """Start a new loop (replaces any existing one for the session)."""
         prompt = (prompt or "").strip()
         if not prompt:
-            raise ValueError("loop prompt is empty")
+            raise ValueError("循环提示词为空")
 
         now = time.time()
         self_paced = interval_seconds is None
@@ -469,7 +469,7 @@ class LoopManager:
         self._state = state
         return self._save()
 
-    def pause(self, reason: str = "user-paused") -> Optional[LoopState]:
+    def pause(self, reason: str = "用户暂停") -> Optional[LoopState]:
         s = self._state
         if not s or s.status not in {"active", "paused"}:
             return None
@@ -561,8 +561,8 @@ class LoopManager:
 
         # 1. Agent self-stop marker.
         if response_signals_complete(last_response):
-            return self._stop("done", "agent signaled the task is complete",
-                              f"✓ Loop finished after {ticks} — task complete.")
+            return self._stop("done", "代理已发出完成信号",
+                              f"✓ 循环已结束（运行 {ticks}）——任务完成。")
 
         # 2. Evidence-based --until judge (reuses the /goal judge; fail-open).
         if s.until and (last_response or "").strip():
@@ -571,27 +571,27 @@ class LoopManager:
 
                 verdict, reason, _pf, _wait, _tf = judge_goal(s.until, last_response)
             except Exception as exc:
-                verdict, reason = "continue", f"judge unavailable: {type(exc).__name__}"
+                verdict, reason = "continue", f"评判器不可用：{type(exc).__name__}"
             if verdict == "done":
-                return self._stop("done", f"stop condition met: {reason}",
-                                  f"✓ Loop finished after {ticks} — {reason}")
+                return self._stop("done", f"停止条件已满足：{reason}",
+                                  f"✓ 循环已结束（运行 {ticks}）——{reason}")
             if verdict == "blocked":
                 # Unachievable stop condition: pause so the user can re-scope, don't spin.
-                why = f"stop condition judged unachievable: {reason}"
+                why = f"停止条件被判定为无法达成：{reason}"
                 return self._stop("paused", why,
-                                  f"⏸ Loop paused — {why}. /loop resume to keep going, /loop stop to end it.")
+                                  f"⏸ 循环已暂停——{why}。用 /loop resume 继续，/loop stop 结束。")
 
         # 3. --times user cap.
         if s.times and s.ticks_fired >= s.times:
-            return self._stop("done", f"completed the requested {s.times} runs",
-                              f"✓ Loop finished — ran {s.times}/{s.times} times.")
+            return self._stop("done", f"已完成要求的 {s.times} 次运行",
+                              f"✓ 循环已结束——共运行 {s.times}/{s.times} 次。")
 
         # 4. Config backstop budget → pause (recoverable), not done.
         if s.max_ticks and s.ticks_fired >= s.max_ticks:
             return self._stop(
-                "paused", f"tick budget exhausted ({s.ticks_fired}/{s.max_ticks})",
-                f"⏸ Loop paused — {s.ticks_fired}/{s.max_ticks} ticks used "
-                "(loops.max_ticks). /loop resume to keep going, /loop stop to end it.",
+                "paused", f"唤醒预算已用尽（{s.ticks_fired}/{s.max_ticks}）",
+                f"⏸ 循环已暂停——已用 {s.ticks_fired}/{s.max_ticks} 次"
+                "（loops.max_ticks）。用 /loop resume 继续，/loop stop 结束。",
             )
 
         # 5. Still looping — schedule the next tick from turn end.
@@ -626,26 +626,26 @@ def goal_blocks_loop_tick(session_id: str) -> bool:
 
 
 LOOP_HELP = (
-    "Usage: /loop [interval] <prompt> [--times N] [--until <condition>]\n"
-    "  /loop 5m check the deploy status      — first run now, then every 5m\n"
-    "  /loop every 10m /recap                — loop a slash command\n"
-    "  /loop keep fixing tests until green   — self-paced (backs off while output is unchanged)\n"
-    "  /loop 2m poll CI --times 30           — stop after 30 runs\n"
+    "用法：/loop [interval] <prompt> [--times N] [--until <condition>]\n"
+    "  /loop 5m 检查部署状态              —— 立即跑一次，之后每 5m\n"
+    "  /loop every 10m /recap             —— 循环执行一条斜杠命令\n"
+    "  /loop 一直修测试直到通过           —— 自适应节奏（输出没变化时自动放慢）\n"
+    "  /loop 2m poll CI --times 30        —— 运行 30 次后停止\n"
     "  /loop 5m watch the queue --until queue is empty\n"
-    "Controls: /loop status · /loop pause · /loop resume · /loop stop\n"
-    "The loop also stops itself when the agent replies with "
+    "控制：/loop status · /loop pause · /loop resume · /loop stop\n"
+    "当代理回复以下内容时，循环也会自行停止："
     f"{LOOP_COMPLETE_MARKER}."
 )
 
 
 def _pause_output(mgr: "LoopManager") -> str:
-    state = mgr.pause(reason="user-paused")
-    return "No loop set." if state is None else f"⏸ Loop paused: {state.prompt}\nUse /loop resume to continue."
+    state = mgr.pause(reason="用户暂停")
+    return "未设置循环。" if state is None else f"⏸ 循环已暂停：{state.prompt}\n用 /loop resume 继续。"
 
 
 def _resume_output(mgr: "LoopManager") -> str:
     state = mgr.resume()
-    return "No loop to resume." if state is None else f"▶ Loop resumed ({state.cadence_label()}): {state.prompt}"
+    return "没有可恢复的循环。" if state is None else f"▶ 循环已恢复（{state.cadence_label()}）：{state.prompt}"
 
 
 # Control words -> handler returning the output text. Anything else is a new loop spec.
@@ -653,7 +653,7 @@ _CONTROL_COMMANDS = {
     **dict.fromkeys(("", "status"), lambda mgr: mgr.status_line()),
     "pause": _pause_output,
     "resume": _resume_output,
-    **dict.fromkeys(("stop", "clear", "cancel"), lambda mgr: "✓ Loop stopped." if mgr.clear() else "No active loop."),
+    **dict.fromkeys(("stop", "clear", "cancel"), lambda mgr: "✓ 循环已停止。" if mgr.clear() else "没有进行中的循环。"),
     **dict.fromkeys(("help", "--help", "-h"), lambda mgr: LOOP_HELP),
 }
 
@@ -677,7 +677,7 @@ def dispatch_loop_command(
     parsed = parse_loop_args(arg)
     if parsed["error"]:
         if parsed["error"] == "empty":
-            return {"output": "Usage: /loop [interval] <prompt> — see /loop help.", "created": False}
+            return {"output": "用法：/loop [interval] <prompt> —— 详见 /loop help。", "created": False}
         return {"output": f"/loop: {parsed['error']}", "created": False}
 
     replacing = mgr.has_loop()
@@ -692,27 +692,27 @@ def dispatch_loop_command(
     except ValueError as exc:
         return {"output": f"/loop: {exc}", "created": False}
 
-    lines = [f"↻ Loop set ({state.cadence_label()}): {state.prompt}"]
+    lines = [f"↻ 循环已设置（{state.cadence_label()}）：{state.prompt}"]
     if replacing:
-        lines.append("(replaced the previous loop for this session)")
+        lines.append("（已替换本会话先前的循环）")
     if parsed["interval_seconds"] is not None and parsed["interval_seconds"] < state.interval_seconds:
         lines.append(
-            f"(interval raised to the {format_interval(state.interval_seconds)} minimum — "
-            "loops.min_interval_seconds)"
+            f"（间隔已上调至最小值 {format_interval(state.interval_seconds)} —— "
+            "loops.min_interval_seconds）"
         )
     if state.mode == "self_paced":
         lines.append(
-            f"Self-paced: first check in {format_interval(state.current_delay)}; "
-            f"backs off up to {format_interval(self_paced_ceiling_seconds())} while nothing changes."
+            f"自适应节奏：{format_interval(state.current_delay)}后首次检查；"
+            f"内容无变化时最多放慢到 {format_interval(self_paced_ceiling_seconds())}。"
         )
     if state.times:
-        lines.append(f"Runs {state.times} time{'s' if state.times != 1 else ''}, then stops.")
+        lines.append(f"运行 {state.times} 次后停止。")
     if state.until:
-        lines.append(f"Stops when: {state.until}")
+        lines.append(f"停止条件：{state.until}")
     if not state.times and state.max_ticks:
-        lines.append(f"Backstop budget: {state.max_ticks} ticks (loops.max_ticks; 0 = unlimited).")
-    first = "fires now, then on the cadence above" if state.status == "active" else state.remaining_label()
-    lines.append(f"First wakeup {first}. Controls: /loop status · pause · resume · stop.")
+        lines.append(f"兜底预算：{state.max_ticks} 次触发（loops.max_ticks；0 = 不限）。")
+    first = "立即触发，之后按上述节奏" if state.status == "active" else state.remaining_label()
+    lines.append(f"首次唤醒：{first}。控制：/loop status · pause · resume · stop。")
     return {"output": "\n".join(lines), "created": True}
 
 

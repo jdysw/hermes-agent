@@ -34,5 +34,5 @@ def test_backup_unwritable_parent_errors_cleanly(tmp_path, monkeypatch, capsys):
 
     assert exc.value.code == 1
     out = capsys.readouterr().out
-    assert "cannot write backup" in out.lower()
+    assert "无法将备份写入" in out
     assert "Traceback" not in out

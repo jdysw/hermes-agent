@@ -536,7 +536,7 @@ def _escalate_wedged_gateway(pid: int, *, term_grace: float = 5.0, kill_wait: fl
         return True
     try:
         terminate_pid(pid, force=True, expected_start_time=expected_start_time)
-        print(f"⚠ Gateway PID {pid} unresponsive to SIGTERM; sent SIGKILL")
+        print(f"⚠ 网关 PID {pid} 对 SIGTERM 无响应；已发送 SIGKILL")
     except (ProcessLookupError, PermissionError, OSError):
         pass
     return _wait_for_pid_exit(pid, max(float(kill_wait), 0.0))
@@ -804,7 +804,7 @@ def find_profile_gateway_processes(exclude_pids: set | None = None, *, strict: b
                 create_time = 0.0
         except Exception as exc:
             if strict:
-                raise RuntimeError(f"Could not inspect gateway PID for profile {profile.name}") from exc
+                raise RuntimeError(f"无法检查 profile {profile.name} 的网关 PID") from exc
             continue
         if pid is None or pid <= 0 or pid in _exclude or pid in seen:
             continue
@@ -865,7 +865,7 @@ def find_windows_gateway_services(
                 # Deleted between enumeration and inspection.
                 continue
             except Exception as exc:
-                raise RuntimeError("SCM service inspection failed") from exc
+                raise RuntimeError("SCM 服务检查失败") from exc
             if service_status == "stopped":
                 continue
             if service_status != "running":
@@ -873,10 +873,10 @@ def find_windows_gateway_services(
                     indeterminate_services_by_pid.setdefault(service_pid, []).append((service_name, service_status))
                 continue
             if service_pid <= 0:
-                raise RuntimeError(f"Running SCM service {service_name} has no valid process ID")
+                raise RuntimeError(f"正在运行的 SCM 服务 {service_name} 没有有效的进程 ID")
             service_names_by_pid.setdefault(service_pid, set()).add(service_name)
     except Exception as exc:
-        raise RuntimeError("SCM service enumeration failed") from exc
+        raise RuntimeError("SCM 服务枚举失败") from exc
 
     found: dict[str, WindowsGatewayService] = {}
     for profile_process in profile_processes:
@@ -884,17 +884,17 @@ def find_windows_gateway_services(
             gateway_process = psutil_module.Process(int(profile_process.pid))
             gateway_create_time = float(gateway_process.create_time())
             if profile_process.create_time <= 0 or abs(gateway_create_time - profile_process.create_time) > 0.001:
-                raise RuntimeError("Gateway process identity changed during SCM discovery")
+                raise RuntimeError("SCM 发现期间网关进程身份发生变化")
             ancestor_pids = [int(parent.pid) for parent in gateway_process.parents()]
             for pid in ancestor_pids:
                 indeterminate_services = indeterminate_services_by_pid.get(pid, [])
                 if indeterminate_services:
                     service_name, service_status = indeterminate_services[0]
-                    raise RuntimeError(f"SCM service {service_name} has indeterminate status: {service_status}")
+                    raise RuntimeError(f"SCM 服务 {service_name} 状态不确定：{service_status}")
             shared_service_pids = [pid for pid in ancestor_pids if len(service_names_by_pid.get(pid, set())) > 1]
             if shared_service_pids:
                 raise RuntimeError(
-                    "Gateway ownership is ambiguous under shared SCM host PID(s): "
+                    "在共享的 SCM 宿主 PID 下，网关归属不明确："
                     + ", ".join(str(pid) for pid in shared_service_pids)
                 )
             service_pid = next((pid for pid in ancestor_pids if len(service_names_by_pid.get(pid, set())) == 1), None)
@@ -923,7 +923,7 @@ def find_windows_gateway_services(
         except RuntimeError:
             raise
         except Exception as exc:
-            raise RuntimeError(f"Could not determine SCM ownership for gateway profile {profile_process.profile}") from exc
+            raise RuntimeError(f"无法确定 profile {profile_process.profile} 网关的 SCM 归属") from exc
     return [found[name] for name in sorted(found)]
 
 
@@ -1277,20 +1277,20 @@ def _wait_for_systemd_service_restart(
                     runtime_state = None
             gateway_state = (runtime_state or {}).get("gateway_state")
             if gateway_state in ("running", "degraded"):
-                print(f"✓ {scope_label} service restarted (PID {new_pid})")
+                print(f"✓ {scope_label}服务已重启（PID {new_pid}）")
                 if gateway_state == "degraded":
                     # Serving, but a configured platform is parked or retrying: a real restart, not a
                     # failure — say so instead of waiting out the timeout and reporting one.
-                    print(f"⚠ {scope_label} gateway is DEGRADED — see `hermes gateway status`")
+                    print(f"⚠ {scope_label}网关处于降级状态（DEGRADED）— 参见 `hermes gateway status`")
                 return True
             if gateway_state == "startup_failed":
                 reason = (runtime_state or {}).get("exit_reason") or "startup failed"
                 print(
-                    f"⚠ {scope_label} service process restarted (PID {new_pid}), but gateway startup failed: {reason}"
+                    f"⚠ {scope_label}服务进程已重启（PID {new_pid}），但网关启动失败：{reason}"
                 )
                 return False
             if not printed_runtime_wait:
-                print(f"⏳ {scope_label} service process started (PID {new_pid}); waiting for gateway runtime...")
+                print(f"⏳ {scope_label}服务进程已启动（PID {new_pid}），正在等待网关运行时……")
                 printed_runtime_wait = True
 
         if active_state == "activating" and sub_state == "auto-restart":
@@ -1305,9 +1305,9 @@ def _wait_for_systemd_service_restart(
 
     sudo, _, user_flag = _systemd_cli_bits(system)
     print(
-        f"⚠ {scope_label} service did not become active within {int(timeout)}s.\n"
-        f"  Check status: {sudo}hermes gateway status\n"
-        f"  Check logs:   journalctl {user_flag}-u {svc} -l --since '2 min ago'"
+        f"⚠ {scope_label}服务在 {int(timeout)} 秒内未变为活动状态。\n"
+        f"  查看状态：{sudo}hermes gateway status\n"
+        f"  查看日志：journalctl {user_flag}-u {svc} -l --since '2 min ago'"
     )
     return False
 
@@ -1347,11 +1347,11 @@ def _print_systemd_start_limit_wait(system: bool = False) -> None:
     svc = get_service_name()
     scope_label = _service_scope_label(system).capitalize()
     sudo, scope_flag, user_flag = _systemd_cli_bits(system)
-    print(f"⏳ {scope_label} service is temporarily rate-limited by systemd.")
-    print("  systemd is refusing another immediate start after repeated exits.")
-    print(f"  Wait for the start-limit window to expire, then run: {sudo}hermes gateway restart{scope_flag}")
-    print(f"  Or clear the failed state manually: systemctl {user_flag}reset-failed {svc}")
-    print(f"  Check logs: journalctl {user_flag}-u {svc} -l --since '5 min ago'")
+    print(f"⏳ {scope_label}服务被 systemd 临时限流。")
+    print("  systemd 在进程反复退出后拒绝立即再次启动。")
+    print(f"  请等待启动限制窗口过期后运行：{sudo}hermes gateway restart{scope_flag}")
+    print(f"  或手动清除失败状态：systemctl {user_flag}reset-failed {svc}")
+    print(f"  查看日志：journalctl {user_flag}-u {svc} -l --since '5 min ago'")
 
 
 def _recover_pending_systemd_restart(system: bool = False, previous_pid: int | None = None) -> bool:
@@ -1370,7 +1370,7 @@ def _recover_pending_systemd_restart(system: bool = False, previous_pid: int | N
 
     active_state = props.get("ActiveState", "")
     if active_state == "activating" and props.get("SubState", "") == "auto-restart":
-        print("⏳ Service restart already pending — waiting for systemd relaunch...")
+        print("⏳ 服务重启已挂起 — 正在等待 systemd 重新拉起……")
         return _wait_for_systemd_service_restart(system=system, previous_pid=previous_pid)
 
     if active_state == "failed" and (
@@ -1378,7 +1378,7 @@ def _recover_pending_systemd_restart(system: bool = False, previous_pid: int | N
         or props.get("Result", "") == "exit-code"
     ):
         svc = get_service_name()
-        print(f"↻ Clearing failed state for pending {_service_scope_label(system)} service restart...")
+        print(f"↻ 正在清除挂起的{_service_scope_label(system)}服务重启的失败状态……")
         _run_systemctl(["reset-failed", svc], system=system, check=False, timeout=30)
         _run_systemctl(["start", svc], system=system, check=False, timeout=90)
         return _wait_for_systemd_service_restart(system=system, previous_pid=previous_pid)
@@ -1525,18 +1525,18 @@ def _print_gateway_process_mismatch(snapshot: GatewayRuntimeSnapshot) -> None:
     if not snapshot.has_process_service_mismatch:
         return
     print()
-    pids_line = f"  PID(s): {_format_gateway_pids(snapshot.gateway_pids, limit=None)}"
+    pids_line = f"  PID：{_format_gateway_pids(snapshot.gateway_pids, limit=None)}"
     # Managed detached fallback (launchd exit-5 path) vs. a genuinely manual run.
     if _launchd_unsupported_marker_exists():
-        print("⚠ Gateway is running as a detached fallback process — launchd cannot supervise it")
+        print("⚠ 网关正以脱离的兜底进程运行 — launchd 无法监管它")
         print(pids_line)
-        print("  Auto-start at login and auto-restart on crash are NOT available.")
-        print("  Stop it with: hermes gateway stop")
+        print("  登录时自动启动、崩溃时自动重启均不可用。")
+        print("  可用以下命令停止它：hermes gateway stop")
     else:
-        print("⚠ Gateway process is running for this profile, but the service is not active")
+        print("⚠ 该 profile 有网关进程在运行，但服务未激活")
         print(pids_line)
-        print("  This is usually a manual foreground/tmux/nohup run, so `hermes gateway`")
-        print("  can refuse to start another copy until this process stops.")
+        print("  这通常是手动前台/tmux/nohup 运行，因此 `hermes gateway`")
+        print("  在该进程停止前可能拒绝启动另一个副本。")
 
 
 def _print_multiplex_standalone_reason() -> None:
@@ -1593,7 +1593,7 @@ def _print_other_profiles_gateway_status() -> None:
         if not other_processes:
             return
         print()
-        print("Other profiles:")
+        print("其他 profile：")
         for proc in other_processes:
             print(f"  ✓ {proc.profile:<16s} — PID {proc.pid}")
     except Exception:
@@ -1617,20 +1617,20 @@ def _gateway_list() -> None:
     try:
         from hermes_cli.profiles import list_profiles, get_active_profile_name
     except Exception:
-        print("Unable to list profiles.")
+        print("无法列出 profile。")
         return
 
     profiles = list_profiles()
     if not profiles:
-        print("No profiles found.")
+        print("未找到任何 profile。")
         return
 
     current = get_active_profile_name()
 
-    print("Gateways:")
+    print("网关：")
     for prof in profiles:
         marker = "✓" if prof.gateway_running else "✗"
-        label = prof.name + (" (current)" if prof.name == current else "")
+        label = prof.name + ("（当前）" if prof.name == current else "")
         parts = [f"  {marker} {label:<24s}"]
         if prof.gateway_running:
             pid = None
@@ -1642,9 +1642,9 @@ def _gateway_list() -> None:
             if pid:
                 parts.append(f"PID {pid}")
             elif named_profile_served_by_running_multiplexer(prof.name):
-                parts.append("served by the default multiplexer")
+                parts.append("由默认多路复用器提供服务")
         else:
-            parts.append("not running")
+            parts.append("未运行")
         print(" — ".join(parts))
 
 
@@ -1670,9 +1670,9 @@ def kill_gateway_processes(force: bool = False, exclude_pids: set | None = None,
         except ProcessLookupError:
             pass
         except PermissionError:
-            print(f"⚠ Permission denied to kill PID {pid}")
+            print(f"⚠ 无权终止 PID {pid}")
         except OSError as exc:
-            print(f"Failed to kill PID {pid}: {exc}")
+            print(f"终止 PID {pid} 失败：{exc}")
     return killed
 
 
@@ -1775,7 +1775,7 @@ def _reap_unsupervised_gateway_orphans(extra_exclude: set | None = None) -> bool
         except ProcessLookupError:
             continue
         except PermissionError:
-            print(f"⚠ Permission denied to kill orphaned gateway PID {pid}")
+            print(f"⚠ 无权终止游离网关 PID {pid}")
             continue
         reaped = True
 
@@ -1924,7 +1924,7 @@ def stop_profile_gateway() -> bool:
         except ProcessLookupError:
             pass  # Already gone
         except PermissionError:
-            print(f"⚠ Permission denied to kill PID {pid}")
+            print(f"⚠ 无权终止 PID {pid}")
             return False
 
     # ``_pid_exists``, NOT ``os.kill(pid, 0)`` (TerminateProcess on Windows).
@@ -2353,10 +2353,10 @@ def _preflight_user_systemd(*, auto_enable_linger: bool = True) -> None:
         # Linger is on but socket still missing — unusual; fall through to error.
         _raise_user_systemd_unavailable(
             username,
-            reason="User systemd control sockets are missing even though linger is enabled.",
+            reason="尽管已启用 linger，用户 systemd 控制套接字仍然缺失。",
             fix_hint=(
                 f"  systemctl start user@{os.getuid()}.service\n"  # windows-footgun: ok — POSIX systemd helper, never invoked on Windows
-                "  (may require sudo; try again after the command succeeds)"
+                "  （可能需要 sudo；命令成功后再重试）"
             ),
         )
 
@@ -2365,31 +2365,31 @@ def _preflight_user_systemd(*, auto_enable_linger: bool = True) -> None:
             result = _loginctl_enable_linger(username)
         except Exception as exc:
             _raise_user_systemd_unavailable(
-                username, reason=f"loginctl enable-linger failed ({exc}).", fix_hint=sudo_hint
+                username, reason=f"loginctl enable-linger 失败（{exc}）。", fix_hint=sudo_hint
             )
         else:
             if result.returncode == 0:
                 if _wait_for_user_dbus_socket(timeout=5.0):
-                    print(f"✓ Enabled linger for {username} — user D-Bus now available")
+                    print(f"✓ 已为 {username} 启用 linger — 用户 D-Bus 现已可用")
                     return
                 # enable-linger succeeded but the socket never appeared.
                 _raise_user_systemd_unavailable(
                     username,
-                    reason="Linger was enabled, but the user D-Bus socket did not appear.",
+                    reason="已启用 linger，但用户 D-Bus 套接字未出现。",
                     fix_hint=(
-                        "  Log out and log back in, then re-run the command.\n"
-                        f"  Or reboot and run: systemctl --user start {get_service_name()}"
+                        "  请注销后重新登录，然后重新运行该命令。\n"
+                        f"  或重启后运行：systemctl --user start {get_service_name()}"
                     ),
                 )
             _raise_user_systemd_unavailable(
                 username,
-                reason=f"loginctl enable-linger was denied: {_completed_process_detail(result)}",
+                reason=f"loginctl enable-linger 被拒绝：{_completed_process_detail(result)}",
                 fix_hint=sudo_hint,
             )
 
     _raise_user_systemd_unavailable(
         username,
-        reason=f"User D-Bus session is not available ({linger_detail or 'linger disabled'}).",
+        reason=f"用户 D-Bus 会话不可用（{linger_detail or 'linger 已禁用'}）。",
         fix_hint=sudo_hint,
     )
 
@@ -2398,13 +2398,13 @@ def _raise_user_systemd_unavailable(username: str, *, reason: str, fix_hint: str
     """Build a user-facing error message and raise UserSystemdUnavailableError."""
     msg = (
         f"{reason}\n"
-        "  systemctl --user cannot reach the user D-Bus session in this shell.\n"
+        "  在此 shell 中，systemctl --user 无法访问用户 D-Bus 会话。\n"
         "\n"
-        "  To fix:\n"
+        "  修复方法：\n"
         f"{fix_hint}\n"
         "\n"
-        "  Alternative: run the gateway in the foreground (stays up until\n"
-        "  you exit / close the terminal):\n"
+        "  备选方案：以前台方式运行网关（会一直运行，直到\n"
+        "  你退出或关闭终端）：\n"
         "    hermes gateway run"
     )
     raise UserSystemdUnavailableError(msg)
@@ -2433,7 +2433,7 @@ def _service_scope_label(system: bool = False) -> str:
 def get_installed_systemd_scopes() -> list[str]:
     scopes: list[str] = []
     seen_paths: set[Path] = set()
-    for system, label in ((False, "user"), (True, "system")):
+    for system, label in ((False, "用户"), (True, "系统")):
         unit_path = get_systemd_unit_path(system=system)
         if unit_path not in seen_paths and unit_path.exists():
             scopes.append(label)
@@ -2497,12 +2497,12 @@ def print_legacy_unit_warning() -> None:
     legacy = _find_legacy_hermes_units()
     if not legacy:
         return
-    print_warning("Legacy Hermes gateway unit(s) detected from an older install:")
+    print_warning("检测到旧版安装遗留的 Hermes 网关单元：")
     for name, path, is_system in legacy:
-        print_info(f"    {path}  ({_service_scope_label(is_system)} scope)")
-    print_info("  These run alongside the current hermes-gateway service and")
-    print_info("  cause SIGTERM flap loops — both try to use the same bot token.")
-    print_info("  Remove them with:")
+        print_info(f"    {path}  （{_service_scope_label(is_system)}范围）")
+    print_info("  它们与当前的 hermes-gateway 服务并存，")
+    print_info("  会引发 SIGTERM 反复抖动 — 二者都试图使用同一个 bot 令牌。")
+    print_info("  可用以下命令移除：")
     print_info("    hermes gateway migrate-legacy")
 
 
@@ -2511,21 +2511,21 @@ def remove_legacy_hermes_units(interactive: bool = True, dry_run: bool = False) 
     only lists. Returns ``(removed_count, remaining_paths)`` (remaining: e.g. system-scope when not root)."""
     legacy = _find_legacy_hermes_units()
     if not legacy:
-        print("No legacy Hermes gateway units found.")
+        print("未找到遗留的 Hermes 网关单元。")
         return 0, []
 
     print()
-    print("Legacy Hermes gateway unit(s) found:")
+    print("发现遗留的 Hermes 网关单元：")
     for name, path, is_system in legacy:
-        print(f"  {path}  ({_service_scope_label(is_system)} scope)")
+        print(f"  {path}  （{_service_scope_label(is_system)}范围）")
     print()
 
     if dry_run:
-        print("(dry-run — nothing removed)")
+        print("（试运行 — 未删除任何内容）")
         return 0, [p for _, p, _ in legacy]
 
-    if interactive and not prompt_yes_no("Remove these legacy units?", True):
-        print("Skipped. Run again with: hermes gateway migrate-legacy")
+    if interactive and not prompt_yes_no("是否移除这些遗留单元？", True):
+        print("已跳过。可再次运行：hermes gateway migrate-legacy")
         return 0, [p for _, p, _ in legacy]
 
     removed = 0
@@ -2538,10 +2538,10 @@ def remove_legacy_hermes_units(interactive: bool = True, dry_run: bool = False) 
                 _run_systemctl(["stop", name], system=system, check=False, timeout=90)
                 _run_systemctl(["disable", name], system=system, check=False, timeout=30)
                 path.unlink(missing_ok=True)
-                print(f"  ✓ Removed {path}")
+                print(f"  ✓ 已移除 {path}")
                 removed += 1
             except (OSError, RuntimeError) as e:
-                print(f"  ⚠ Could not remove {path}: {e}")
+                print(f"  ⚠ 无法移除 {path}：{e}")
                 remaining.append(path)
         with contextlib.suppress(RuntimeError):
             _run_systemctl(["daemon-reload"], system=system, check=False, timeout=30)
@@ -2555,17 +2555,17 @@ def remove_legacy_hermes_units(interactive: bool = True, dry_run: bool = False) 
     if system_units:
         if os.geteuid() != 0:  # windows-footgun: ok — Linux systemd removal path, guarded by `if system == "Linux"` / systemd-only branch
             print()
-            print_warning("System-scope legacy units require root to remove.")
-            print_info("  Re-run with: sudo hermes gateway migrate-legacy")
+            print_warning("移除系统范围的遗留单元需要 root 权限。")
+            print_info("  请重新运行：sudo hermes gateway migrate-legacy")
             remaining.extend(path for _, path in system_units)
         else:
             _remove_units(system_units, system=True)
 
     print()
     if remaining:
-        print_warning(f"{len(remaining)} legacy unit(s) still present — see messages above.")
+        print_warning(f"仍有 {len(remaining)} 个遗留单元 — 详见上方信息。")
     else:
-        print_success(f"Removed {removed} legacy unit(s).")
+        print_success(f"已移除 {removed} 个遗留单元。")
 
     return removed, remaining
 
@@ -2575,10 +2575,10 @@ def print_systemd_scope_conflict_warning() -> None:
     if len(scopes) < 2:
         return
 
-    print_warning(f"Both user and system gateway services are installed ({' + '.join(scopes)}).")
-    print_info("  This is confusing and can make start/stop/status behavior ambiguous.")
-    print_info("  Default gateway commands target the user service unless you pass --system.")
-    print_info("  Keep one of these:")
+    print_warning(f"用户和系统两种网关服务都已安装（{' + '.join(scopes)}）。")
+    print_info("  这会造成混淆，使 start/stop/status 的行为不明确。")
+    print_info("  除非传入 --system，否则默认网关命令作用于用户服务。")
+    print_info("  请保留其中一个：")
     print_info("    hermes gateway uninstall")
     print_info("    sudo hermes gateway uninstall --system")
 
@@ -2611,7 +2611,7 @@ def refuses_container_user_scope_install(system: bool) -> bool:
 
 def _require_root_for_system_service(action: str) -> None:
     if os.geteuid() != 0:  # windows-footgun: ok — POSIX systemd helper, never invoked on Windows
-        raise SystemScopeRequiresRootError(f"System gateway {action} requires root. Re-run with sudo.", action)
+        raise SystemScopeRequiresRootError(f"系统网关 {action} 需要 root 权限。请用 sudo 重新运行。", action)
 
 
 def _system_service_identity(run_as_user: str | None = None) -> tuple[str, str, str, int]:
@@ -2622,19 +2622,19 @@ def _system_service_identity(run_as_user: str | None = None) -> tuple[str, str, 
         run_as_user or os.getenv("SUDO_USER") or os.getenv("USER") or os.getenv("LOGNAME") or getpass.getuser()
     ).strip()
     if not username:
-        raise ValueError("Could not determine which user the gateway service should run as")
+        raise ValueError("无法确定网关服务应以哪个用户身份运行")
     if username == "root" and not run_as_user:
         raise ValueError(
-            "Refusing to install the gateway system service as root; pass --run-as-user root to override (e.g. in LXC containers)"
+            "拒绝以 root 身份安装网关系统服务；如需覆盖请传入 --run-as-user root（例如在 LXC 容器中）"
         )
     if username == "root":
-        print_warning("Installing gateway service to run as root.")
-        print_info("  This is fine for LXC/container environments but not recommended on bare-metal hosts.")
+        print_warning("正在安装以 root 身份运行的网关服务。")
+        print_info("  这在 LXC/容器环境中没问题，但不建议在裸金属主机上使用。")
 
     try:
         user_info = pwd.getpwnam(username)
     except KeyError as e:
-        raise ValueError(f"Unknown user: {username}") from e
+        raise ValueError(f"未知用户：{username}") from e
     return username, grp.getgrgid(user_info.pw_gid).gr_name, user_info.pw_dir, user_info.pw_uid
 
 
@@ -2658,16 +2658,16 @@ def _default_system_service_user() -> str | None:
 def prompt_linux_gateway_install_scope() -> str | None:
     # Only root can create a boot-time system service; never hand a non-root user a "re-run under sudo" recipe.
     is_root = os.geteuid() == 0  # windows-footgun: ok — Linux systemd install wizard, never invoked on Windows
-    options = ["User service (no sudo; best for laptops/dev boxes; may need linger after logout)"]
+    options = ["用户服务（无需 sudo；最适合笔记本/开发机；注销后可能需要 linger）"]
     values: list[str | None] = ["user"]
     if is_root:
-        options.append("System service (starts on boot; runs as your chosen user)")
+        options.append("系统服务（开机启动；以你指定的用户运行）")
         values.append("system")
-    options.append("Skip service install for now")
+    options.append("暂时跳过服务安装")
     values.append(None)
-    choice = prompt_choice("  Choose how the gateway should run in the background:", options, default=0)
+    choice = prompt_choice("  请选择网关的后台运行方式：", options, default=0)
     if not is_root and choice == 0:
-        print_info("  Tip: for a boot-time system service, re-run setup as root (e.g. from a root shell or `sudo -i`).")
+        print_info("  提示：如需开机启动的系统服务，请以 root 身份重新运行设置（例如在 root shell 或 `sudo -i` 中）。")
     return values[choice]
 
 
@@ -2681,15 +2681,15 @@ def install_linux_gateway_from_setup(force: bool = False, enable_on_startup: boo
         if os.geteuid() != 0:  # windows-footgun: ok — Linux systemd install wizard, never invoked on Windows
             # Unreachable from the wizard (system scope only offered to root); defensive guard for direct callers.
             print_warning(
-                "  System service install requires root. Re-run setup from a "
-                "root shell, or install a user service instead: hermes gateway install"
+                "  安装系统服务需要 root 权限。请从 root shell 重新运行设置，"
+                "或改为安装用户服务：hermes gateway install"
             )
             return scope, False
 
         while not run_as_user:
-            run_as_user = (prompt("  Run the system gateway service as which user?", default="") or "").strip()
+            run_as_user = (prompt("  系统网关服务以哪个用户运行？", default="") or "").strip()
             if not run_as_user:
-                print_error("  Enter a username.")
+                print_error("  请输入用户名。")
 
         systemd_install(force=force, system=True, run_as_user=run_as_user, enable_on_startup=enable_on_startup)
         return scope, True
@@ -2707,17 +2707,17 @@ def ensure_gateway_service(context: str = "setup") -> bool:
     from hermes_constants import is_container
     if is_container():
         # Containers use restart policies, not service managers.
-        print_info("Start the gateway to bring your bots online:")
-        print_info("   hermes gateway run          # Run as container main process")
+        print_info("启动网关即可让你的 bot 上线：")
+        print_info("   hermes gateway run          # 作为容器主进程运行")
         print_info("")
-        print_info("For automatic restarts, use a Docker restart policy:")
+        print_info("如需自动重启，请使用 Docker 重启策略：")
         print_info("   docker run --restart unless-stopped ...")
         return False
 
     supports_systemd = supports_systemd_services()
     if not (supports_systemd or is_macos() or is_windows()):
-        print_info("  No supported service manager found on this host.")
-        print_info("  Run the gateway in the foreground with: hermes gateway")
+        print_info("  此主机上未找到受支持的服务管理器。")
+        print_info("  可前台运行网关：hermes gateway")
         return False
 
     try:
@@ -2730,14 +2730,14 @@ def ensure_gateway_service(context: str = "setup") -> bool:
                 # Both units would fight over bot tokens; don't pile a fresh install onto a conflicted state.
                 print_systemd_scope_conflict_warning()
                 return False
-            print_info("  Installing the gateway background service ...")
+            print_info("  正在安装网关后台服务……")
             if supports_systemd:
                 systemd_install(force=False, non_interactive=True)
             elif is_macos():
                 launchd_install(force=False)
             else:
                 _gw_windows().install(force=False)  # Registers the Scheduled Task AND starts it.
-                print_success("  Gateway service installed and started.")
+                print_success("  网关服务已安装并启动。")
                 return True
         if supports_systemd:
             systemd_start()
@@ -2745,21 +2745,21 @@ def ensure_gateway_service(context: str = "setup") -> bool:
             launchd_start()
         else:
             _gw_windows().start()
-        print_success("  Gateway service running (cron jobs + messaging platforms).")
+        print_success("  网关服务正在运行（定时任务 + 消息平台）。")
         return True
     except UserSystemdUnavailableError as e:
-        print_warning("  Could not reach user systemd to start the gateway service:")
+        print_warning("  无法访问用户 systemd 以启动网关服务：")
         _print_indented(str(e), print_info)
     except SystemScopeRequiresRootError as e:
-        print_warning(f"  Gateway service needs root for this scope: {e}")
+        print_warning(f"  此范围的网关服务需要 root 权限：{e}")
         _print_system_scope_remediation("start")
     except SystemExit:
         # Some install/start paths sys.exit() on hard failures (temp-HOME guard); never abort setup/import.
-        print_warning("  Gateway service install did not complete.")
-        print_info("  You can retry manually: hermes gateway install")
+        print_warning("  网关服务安装未完成。")
+        print_info("  可手动重试：hermes gateway install")
     except Exception as e:
-        print_warning(f"  Gateway service install failed: {e}")
-        print_info("  You can retry manually: hermes gateway install")
+        print_warning(f"  网关服务安装失败：{e}")
+        print_info("  可手动重试：hermes gateway install")
     return False
 
 
@@ -2771,11 +2771,11 @@ def get_systemd_linger_status(username: str | None = None) -> tuple[bool | None,
     user manager.
     """
     if is_termux():
-        return None, "not supported in Termux"
+        return None, "Termux 不支持"
     if not is_linux():
-        return None, "not supported on this platform"
+        return None, "此平台不支持"
     if not shutil.which("loginctl"):
-        return None, "loginctl not found"
+        return None, "未找到 loginctl"
 
     if username is None:
         username = os.getenv("USER") or os.getenv("LOGNAME")
@@ -2784,7 +2784,7 @@ def get_systemd_linger_status(username: str | None = None) -> tuple[bool | None,
             import pwd
             username = pwd.getpwuid(os.getuid()).pw_name  # windows-footgun: ok — POSIX loginctl helper, never invoked on Windows
         except Exception:
-            return None, "could not determine current user"
+            return None, "无法确定当前用户"
 
     try:
         result = subprocess.run(
@@ -2966,16 +2966,16 @@ def _remap_path_for_user(path: str, target_home_dir: str) -> str:
 def _print_linger_enable_warning(username: str, detail: str | None = None, *, system: bool = False) -> None:
     print()
     if system:
-        print(f"⚠ Linger not enabled for {username} — cron and Kanban workers cannot start (no user D-Bus).")
+        print(f"⚠ 未为 {username} 启用 linger — 定时任务和 Kanban 工作进程无法启动（无用户 D-Bus）。")
     else:
-        print("⚠ Linger not enabled — gateway may stop when you close this terminal.")
+        print("⚠ 未启用 linger — 关闭此终端后网关可能停止。")
     if detail:
-        print(f"  Auto-enable failed: {detail}")
+        print(f"  自动启用失败：{detail}")
     print()
-    print("  Enable it manually:" if system else "  On headless servers (VPS, cloud instances) run:")
+    print("  请手动启用：" if system else "  在无头服务器（VPS、云实例）上请运行：")
     print(f"    sudo loginctl enable-linger {username}")
     print()
-    print("  Then restart the gateway:")
+    print("  然后重启网关：")
     sudo, _, user_flag = _systemd_cli_bits(system)
     print(f"    {sudo}systemctl {user_flag}restart {get_service_name()}.service")
     print()
@@ -2996,8 +2996,8 @@ def _ensure_linger_enabled(username: str | None = None, *, system: bool = False)
         import getpass
         username = getpass.getuser()
     enabled_msg = (
-        f"✓ Systemd linger is enabled for {username} (worker D-Bus available)" if system
-        else "✓ Systemd linger is enabled (service survives logout)"
+        f"✓ 已为 {username} 启用 systemd linger（工作进程 D-Bus 可用）" if system
+        else "✓ 已启用 systemd linger（服务在注销后存活）"
     )
     if Path(f"/var/lib/systemd/linger/{username}").exists():
         print(enabled_msg)
@@ -3009,13 +3009,13 @@ def _ensure_linger_enabled(username: str | None = None, *, system: bool = False)
         return False
 
     if not shutil.which("loginctl"):
-        _print_linger_enable_warning(username, linger_detail or "loginctl not found", system=system)
+        _print_linger_enable_warning(username, linger_detail or "未找到 loginctl", system=system)
         return False
 
     if system:
-        print(f"Enabling linger for {username} so cron and Kanban workers can reach systemd-run --user...")
+        print(f"正在为 {username} 启用 linger，以便定时任务和 Kanban 工作进程可使用 systemd-run --user……")
     else:
-        print("Enabling linger so the gateway survives SSH logout...")
+        print("正在启用 linger，使网关在 SSH 注销后仍能存活……")
     try:
         result = _loginctl_enable_linger(username)
     except Exception as e:
@@ -3025,7 +3025,7 @@ def _ensure_linger_enabled(username: str | None = None, *, system: bool = False)
     if result.returncode != 0:
         _print_linger_enable_warning(username, _completed_process_detail(result) or linger_detail, system=system)
         return False
-    print(f"✓ Enabled linger for {username}" if system else "✓ Linger enabled — gateway will persist after logout")
+    print(f"✓ 已为 {username} 启用 linger" if system else "✓ 已启用 linger — 网关将在注销后继续运行")
     return True
 
 
@@ -3042,12 +3042,12 @@ def _ensure_system_service_linger(username: str) -> None:
     import pwd
     uid = pwd.getpwnam(username).pw_uid  # windows-footgun: ok — POSIX systemd helper, never invoked on Windows
     if _wait_for_target_user_bus(uid):
-        print(f"✓ /run/user/{uid}/bus is up — cron and Kanban workers can use systemd-run --user")
+        print(f"✓ /run/user/{uid}/bus 已就绪 — 定时任务和 Kanban 工作进程可使用 systemd-run --user")
     else:
-        print(f"⚠ /run/user/{uid}/bus did not appear within 5s.")
-        print(f"  Start the user manager: sudo systemctl start user@{uid}.service")
+        print(f"⚠ /run/user/{uid}/bus 在 5 秒内未出现。")
+        print(f"  请启动用户管理器：sudo systemctl start user@{uid}.service")
     if _systemd_unit_is_active(system=True):
-        print("  The running gateway was started without a user D-Bus; restart it to pick one up:")
+        print("  正在运行的网关启动时没有用户 D-Bus；重启它以获取：")
         print(f"    sudo systemctl restart {get_service_name()}.service")
 
 
@@ -3065,11 +3065,11 @@ def _system_scope_wizard_would_need_root(system: bool = False) -> bool:
 
 def _print_system_scope_remediation(action: str) -> None:
     """Print remediation when the wizard skips a system-scope action because the user isn't root."""
-    print_warning(f"Gateway is installed as a system-wide service — {action} requires root.")
-    print_info("  Options:")
-    print_info(f"    1. {action.capitalize()} it this time:")
+    print_warning(f"网关以系统级服务安装 — {action} 需要 root 权限。")
+    print_info("  可选方案：")
+    print_info(f"    1. 本次直接{action}：")
     print_info(f"         sudo systemctl {action} {get_service_name()}")
-    print_info("    2. Switch to a per-user service (recommended for personal use):")
+    print_info("    2. 改为按用户服务（个人使用推荐）：")
     print_info("         sudo hermes gateway uninstall --system")
     print_info("         hermes gateway install")
     print_info("         hermes gateway start")
@@ -3134,7 +3134,7 @@ def systemd_install(
         print()
         print_legacy_unit_warning()
         print()
-        if non_interactive or prompt_yes_no("Remove the legacy unit(s) before installing?", True):
+        if non_interactive or prompt_yes_no("安装前是否移除遗留单元？", True):
             remove_legacy_hermes_units(interactive=False)
             print()
 
@@ -3168,7 +3168,7 @@ def systemd_install(
     new_unit = generate_systemd_unit(system=system, run_as_user=run_as_user)
     if _refuse_temp_home_service_write(new_unit, "systemd unit"):
         return
-    print(f"Installing {scope_label} systemd service to: {unit_path}")
+    print(f"正在将{scope_label} systemd 服务安装到：{unit_path}")
     unit_path.write_text(new_unit, encoding="utf-8")
 
     _run_systemctl(["daemon-reload"], system=system, check=True, timeout=30)
@@ -3176,18 +3176,18 @@ def systemd_install(
         _run_systemctl(["enable", get_service_name()], system=system, check=True, timeout=30)
 
     print()
-    print(f"✓ {scope_label.capitalize()} service {'installed and enabled' if enable_on_startup else 'installed'}!")
+    print(f"✓ {scope_label.capitalize()}服务{'已安装并启用' if enable_on_startup else '已安装'}！")
     print()
-    print("Next steps:")
-    print(f"  {sudo}hermes gateway start{scope_flag}              # Start the service")
-    print(f"  {sudo}hermes gateway status{scope_flag}             # Check status")
-    print(f"  journalctl {user_flag}-u {get_service_name()} -f  # View logs")
+    print("后续步骤：")
+    print(f"  {sudo}hermes gateway start{scope_flag}              # 启动服务")
+    print(f"  {sudo}hermes gateway status{scope_flag}             # 查看状态")
+    print(f"  journalctl {user_flag}-u {get_service_name()} -f  # 查看日志")
     print()
 
     if system:
         configured_user = _read_systemd_user_from_unit(unit_path)
         if configured_user:
-            print(f"Configured to run as: {configured_user}")
+            print(f"配置的运行用户：{configured_user}")
             _ensure_system_service_linger(configured_user)
     else:
         _ensure_linger_enabled()
@@ -3236,16 +3236,16 @@ def systemd_uninstall(system: bool = False):
     unit_path = get_systemd_unit_path(system=system)
     if unit_path.exists():
         unit_path.unlink()
-        print(f"✓ Removed {unit_path}")
+        print(f"✓ 已移除 {unit_path}")
 
     _run_systemctl(["daemon-reload"], system=system, check=True, timeout=30)
-    print(f"✓ {_service_scope_label(system).capitalize()} service uninstalled")
+    print(f"✓ {_service_scope_label(system).capitalize()}服务已卸载")
 
 
 def _print_service_not_installed(system: bool) -> None:
     sudo, scope_flag, _ = _systemd_cli_bits(system)
-    print("✗ Gateway service is not installed")
-    print(f"  Run: {sudo}hermes gateway install{scope_flag}")
+    print("✗ 网关服务尚未安装")
+    print(f"  运行：{sudo}hermes gateway install{scope_flag}")
 
 
 def _require_service_installed(action: str, system: bool = False) -> None:
@@ -3259,7 +3259,7 @@ def systemd_start(system: bool = False):
     # HERMES_HOME sync happens in refresh's systemd_unit_is_current gate; the unit is guaranteed to exist here.
     refresh_systemd_unit_if_needed(system=system)
     _run_systemctl(["start", get_service_name()], system=system, check=True, timeout=30)
-    print(f"✓ {_service_scope_label(system).capitalize()} service started")
+    print(f"✓ {_service_scope_label(system).capitalize()}服务已启动")
 
 
 def systemd_stop(system: bool = False):
@@ -3270,11 +3270,11 @@ def systemd_stop(system: bool = False):
         _run_systemctl(["stop", get_service_name()], system=system, check=True, timeout=90)
     except subprocess.TimeoutExpired:
         print(
-            f"Gateway {_service_scope_label(system)} service is still stopping after 90s; "
-            "check `hermes gateway status` or logs for final shutdown state."
+            f"网关{_service_scope_label(system)}服务在 90 秒后仍在停止中；"
+            "请查看 `hermes gateway status` 或日志以确认最终关闭状态。"
         )
         return
-    print(f"✓ {_service_scope_label(system).capitalize()} service stopped")
+    print(f"✓ {_service_scope_label(system).capitalize()}服务已停止")
 
 
 def systemd_restart(system: bool = False):
@@ -3296,8 +3296,8 @@ def systemd_restart(system: bool = False):
             # update` behind it) for 180s. Bounded escalation instead: SIGTERM grace → SIGKILL → proceed,
             # ~10s worst case. Never taken for a busy-but-alive gateway — a fresh heartbeat keeps the drain
             # path (and the #86684 cron drain floor) fully intact.
-            f"⚠ Gateway PID {pid} event loop is unresponsive — "
-            "skipping graceful drain and forcing a bounded stop..."
+            f"⚠ 网关 PID {pid} 的事件循环无响应 — "
+            "跳过优雅排空，强制进行有界停止……"
         )
         _escalate_wedged_gateway(pid)
         svc = get_service_name()
@@ -3333,7 +3333,7 @@ def _systemd_graceful_restart_action(system: bool, pid: int) -> str | None:
     # stuck" (#44515).
     wait_budget = _get_restart_exit_wait_budget()
     print(
-        f"⏳ {scope_label} service restarting gracefully (PID {pid}) — "
+        f"⏳ {scope_label}服务正在优雅重启（PID {pid}) — "
         f"waiting up to {wait_budget:.0f}s for in-flight turns + drain..."
     )
     from hermes_cli.update_cmd_drain_report import drain_progress_reporter
@@ -3360,7 +3360,7 @@ def _systemd_graceful_restart_action(system: bool, pid: int) -> str | None:
     ):
         return None
 
-    print("⚠ Systemd did not relaunch the gateway after its graceful exit; starting the inactive service...")
+    print("⚠ systemd 未在网关优雅退出后重新拉起它；正在启动未激活的服务……")
     # ``start`` is intentionally idempotent: a replacement appearing after the snapshot must not be stopped.
     return "start"
 
@@ -3379,8 +3379,8 @@ def _systemd_reset_and_run(action: str, *, system: bool, previous_pid) -> None:
         raise
     except subprocess.TimeoutExpired:
         print(
-            f"Gateway {_service_scope_label(system)} service is still restarting after 90s; "
-            "check `hermes gateway status` or logs for final state."
+            f"网关{_service_scope_label(system)}服务在 90 秒后仍在重启中；"
+            "请查看 `hermes gateway status` 或日志以确认最终状态。"
         )
         return
     _wait_for_systemd_service_restart(system=system, previous_pid=previous_pid)
@@ -3406,22 +3406,22 @@ def systemd_status(deep: bool = False, system: bool = False, full: bool = False)
         print()
 
     if not systemd_unit_is_current(system=system):
-        print("⚠ Installed gateway service definition is outdated")
-        print(f"  Run: {sudo}hermes gateway restart{scope_flag}  # auto-refreshes the unit")
+        print("⚠ 已安装的网关服务定义已过时")
+        print(f"  运行：{sudo}hermes gateway restart{scope_flag}  # 自动刷新单元")
         print()
 
     status_cmd = ["status", svc, "--no-pager"] + (["-l"] if full else [])
     _run_systemctl(status_cmd, system=system, capture_output=False, timeout=10)
     result = _run_systemctl(["is-active", svc], system=system, timeout=10, **_CAPTURE_TEXT)
     if result.stdout.strip() == "active":
-        print(f"✓ {scope_label} gateway service is running")
+        print(f"✓ {scope_label}网关服务正在运行")
     else:
-        print(f"✗ {scope_label} gateway service is stopped")
-        print(f"  Run: {sudo}hermes gateway start{scope_flag}")
+        print(f"✗ {scope_label}网关服务已停止")
+        print(f"  运行：{sudo}hermes gateway start{scope_flag}")
 
     configured_user = _read_systemd_user_from_unit(unit_path) if system else None
     if configured_user:
-        print(f"Configured to run as: {configured_user}")
+        print(f"配置的运行用户：{configured_user}")
 
     _print_runtime_health()
 
@@ -3429,34 +3429,34 @@ def systemd_status(deep: bool = False, system: bool = False, full: bool = False)
     active_state = unit_props.get("ActiveState", "")
     result_code = unit_props.get("Result", "")
     if active_state == "activating" and unit_props.get("SubState", "") == "auto-restart":
-        print("  ⏳ Restart pending: systemd is waiting to relaunch the gateway")
+        print("  ⏳ 重启挂起：systemd 正在等待重新拉起网关")
     elif _systemd_unit_is_start_limited(unit_props):
-        print("  ⏳ Restart pending: systemd is temporarily rate-limiting starts")
-        print(f"  Run after the start-limit window expires: {sudo}hermes gateway restart{scope_flag}")
-        print(f"  Or clear it manually: systemctl {user_flag}reset-failed {svc}")
+        print("  ⏳ 重启挂起：systemd 正在临时限制启动频率")
+        print(f"  请在启动限制窗口过期后运行：{sudo}hermes gateway restart{scope_flag}")
+        print(f"  或手动清除：systemctl {user_flag}reset-failed {svc}")
     elif active_state == "failed" and unit_props.get("ExecMainStatus", "") == str(GATEWAY_SERVICE_RESTART_EXIT_CODE):
-        print("  ⚠ Planned restart is stuck in systemd failed state (exit 75)")
-        print(f"  Run: systemctl {user_flag}reset-failed {svc} && {sudo}hermes gateway start{scope_flag}")
+        print("  ⚠ 计划中的重启卡在 systemd 失败状态（退出码 75）")
+        print(f"  运行：systemctl {user_flag}reset-failed {svc} && {sudo}hermes gateway start{scope_flag}")
     elif active_state == "failed" and result_code:
-        print(f"  ⚠ Systemd unit result: {result_code}")
+        print(f"  ⚠ systemd 单元结果：{result_code}")
 
     if system:
-        print("✓ System service starts at boot without requiring systemd linger")
+        print("✓ 系统服务随开机启动，无需 systemd linger")
     else:
         linger_enabled, linger_detail = get_systemd_linger_status()
         if linger_enabled is True:
-            print("✓ Systemd linger is enabled (service survives logout)")
+            print("✓ 已启用 systemd linger（服务在注销后存活）")
         elif linger_enabled is False:
-            print("⚠ Systemd linger is disabled (gateway may stop when you log out)")
-            print("  Run: sudo loginctl enable-linger $USER")
+            print("⚠ systemd linger 已禁用（注销后网关可能停止）")
+            print("  运行：sudo loginctl enable-linger $USER")
         elif deep:
-            print(f"⚠ Could not verify systemd linger ({linger_detail})")
-            print("  If you want the gateway user service to survive logout, run:")
+            print(f"⚠ 无法验证 systemd linger（{linger_detail}）")
+            print("  若希望网关用户服务在注销后继续存活，请运行：")
             print("  sudo loginctl enable-linger $USER")
 
     if deep:
         print()
-        print("Recent logs:")
+        print("最近日志：")
         log_cmd = ["journalctl"] + ([] if system else ["--user"]) + ["-u", svc, "-n", "20", "--no-pager"]
         if full:
             log_cmd.append("-l")
@@ -3862,19 +3862,18 @@ def _guard_supervised_gateway_conflict(force: bool = False) -> None:
     if not (snapshot.service_installed and snapshot.service_running):
         return
 
-    print_error(f"A gateway is already running under {snapshot.manager} for this profile.")
+    print_error(f"该 profile 已有一个网关在 {snapshot.manager} 下运行。")
     print(
-        "  Starting another one from a shell leaves an orphan dispatcher that\n"
-        "  escapes the service, survives restarts, and writes to the same kanban\n"
-        "  DB concurrently — which can corrupt it. Restart the supervised gateway\n"
-        "  instead:"
+        "  从 shell 再启动一个会留下游离的调度器：它会脱离服务、\n"
+        "  在重启后存活，并并发写入同一个 kanban 数据库 — 可能将其损坏。\n"
+        "  请改为重启受监管的网关："
     )
     print()
     print("    hermes gateway restart")
     print()
     print(
-        "  Pass --force to start a foreground gateway anyway (not recommended\n"
-        "  while the service is running)."
+        "  如仍要启动前台网关，请传入 --force（在服务运行期间\n"
+        "  并不推荐）。"
     )
     sys.exit(1)
 
@@ -3921,17 +3920,17 @@ def _guard_official_docker_root_gateway() -> None:
     if not _is_official_docker_checkout():
         return
 
-    print_error("Refusing to run the Hermes gateway as root inside the official Docker image.")
+    print_error("拒绝在官方 Docker 镜像内以 root 身份运行 Hermes 网关。")
     print(
-        "  The image entrypoint normally drops privileges to the 'hermes' user. "
-        "If you override entrypoint in Docker Compose, include "
-        "/opt/hermes/docker/entrypoint.sh before the Hermes command."
+        "  该镜像的 entrypoint 通常会将权限降为 'hermes' 用户。"
+        "如果你在 Docker Compose 中覆盖了 entrypoint，请在 Hermes 命令前包含 "
+        "/opt/hermes/docker/entrypoint.sh。"
     )
     print(
-        "  Running the gateway as root can leave root-owned files in "
-        "$HERMES_HOME and break later non-root dashboard/gateway runs."
+        "  以 root 身份运行网关会在 "
+        "$HERMES_HOME 中留下 root 属主的文件，并破坏后续非 root 的 dashboard/网关运行。"
     )
-    print("  Set HERMES_ALLOW_ROOT_GATEWAY=1 only if you intentionally accept this risk.")
+    print("  只有在你有意接受此风险时才设置 HERMES_ALLOW_ROOT_GATEWAY=1。")
     sys.exit(1)
 
 
@@ -4122,7 +4121,7 @@ def run_gateway(verbose: int = 0, quiet: bool = False, replace: bool = False, fo
     except KeyboardInterrupt:
         # Detached Windows runs absorb SIGINT above; keep the handler for console runs.
         _exit_diag("asyncio.run.KeyboardInterrupt", traceback=_traceback.format_exc())
-        print("\nGateway stopped.")
+        print("\n网关已停止。")
         _hard_exit_after_gateway_teardown(0)
         return  # unreachable in production (os._exit); guard for test stubs
     except SystemExit as e:
@@ -4205,7 +4204,7 @@ def _runtime_health_lines() -> list[str]:
     gateway_state = state.get("gateway_state")
     exit_reason = state.get("exit_reason")
     lines = [
-        f"⚠ {platform}: {pdata.get('error_message') or 'unknown error'}"
+        f"⚠ {platform}: {pdata.get('error_message') or '未知错误'}"
         for platform, pdata in (state.get("platforms", {}) or {}).items()
         if pdata.get("state") == "fatal"
     ]
@@ -4215,8 +4214,8 @@ def _runtime_health_lines() -> list[str]:
     if gateway_state in ("running", "degraded", "starting", "draining") and runtime_status_is_stale(state):
         if not runtime_status_pid_is_live(state):
             lines.append(
-                f"⚠ Stale gateway_state.json: recorded state '{gateway_state}' but the "
-                "recorded process is gone (likely an ungraceful shutdown)"
+                f"⚠ 过期的 gateway_state.json：记录的状态为 '{gateway_state}'，但"
+                "记录的进程已不存在（很可能是非正常关闭）"
             )
             return lines
         # PID alive but housekeeping stopped re-stamping the file: the reporter's "not a crash" case
@@ -4224,27 +4223,27 @@ def _runtime_health_lines() -> list[str]:
         age = runtime_status_heartbeat_age_s(state)
         if gateway_state != "draining" and age is not None:
             lines.append(
-                f"⚠ Gateway heartbeat stale: housekeeping has not refreshed gateway_state.json for {age} s "
-                f"(event loop or housekeeping wedged; pid {state.get('pid')} alive) — restart the gateway"
+                f"⚠ 网关心跳已过期：维护任务已 {age} 秒未刷新 gateway_state.json "
+                f"（事件循环或维护任务卡死；pid {state.get('pid')} 仍存活）— 请重启网关"
             )
 
     if gateway_state == "startup_failed" and exit_reason:
-        lines.append(f"⚠ Last startup issue: {exit_reason}")
+        lines.append(f"⚠ 上次启动问题：{exit_reason}")
     elif gateway_state == "degraded" and exit_reason:
         # An out-of-loop watchdog hard-exited the process (#113372): the loop stopped dispatching, so
         # housekeeping/cron/kanban froze together. Without this arm the file would read 'running'.
-        lines.append(f"⚠ Gateway exited degraded: {_WATCHDOG_EXIT_REASONS.get(exit_reason, exit_reason)}")
+        lines.append(f"⚠ 网关已降级退出：{_WATCHDOG_EXIT_REASONS.get(exit_reason, exit_reason)}")
     elif gateway_state == "draining":
         action = "restart" if state.get("restart_requested") else "shutdown"
         from gateway.status import parse_active_agents
         count = parse_active_agents(state.get("active_agents"))
-        lines.append(f"⏳ Gateway draining for {action} ({count} active agent(s))")
+        lines.append(f"⏳ 网关正在排空以执行 {action}（{count} 个活动代理）")
         work = state.get("active_work")
         if isinstance(work, list) and work:
             from hermes_cli.update_cmd_drain_report import describe_active_work_unit
             lines.extend(f"     • {describe_active_work_unit(u)}" for u in work if isinstance(u, dict))
     elif gateway_state == "stopped" and exit_reason:
-        lines.append(f"⚠ Last shutdown reason: {exit_reason}")
+        lines.append(f"⚠ 上次关机原因：{exit_reason}")
 
     return lines
 
@@ -4364,7 +4363,7 @@ def _dispatch_all_via_service_manager_if_s6(action: str) -> bool:
     mgr = get_service_manager()
     profiles = mgr.list_profile_gateways()
     if not profiles:
-        print("✗ No profile gateways registered under s6")
+        print("✗ s6 下未注册任何 profile 网关")
         return True
     fn = mgr.stop if action == "stop" else mgr.restart
     errors: list[tuple[str, Exception]] = []
@@ -4374,11 +4373,11 @@ def _dispatch_all_via_service_manager_if_s6(action: str) -> bool:
         except Exception as exc:  # noqa: BLE001 — report and continue
             errors.append((profile, exc))
     succeeded = len(profiles) - len(errors)
-    verb = "stopped" if action == "stop" else "restarted"
+    verb = "已停止" if action == "stop" else "已重启"
     if succeeded:
-        print(f"✓ {verb.capitalize()} {succeeded} profile gateway(s) under s6")
+        print(f"✓ {verb.capitalize()} {succeeded} 个 profile 网关（s6 下）")
     for profile, exc in errors:
-        print(f"✗ Could not {action} gateway-{profile}: {exc}")
+        print(f"✗ 操作 gateway-{profile} 失败（{action}）：{exc}")
     return True
 
 
@@ -4388,7 +4387,7 @@ def gateway_command(args):
         return _gateway_command_inner(args)
     except UserSystemdUnavailableError as e:
         # Actionable message, not a traceback, when the user D-Bus session is unreachable.
-        print_error("User systemd not reachable:")
+        print_error("无法访问用户 systemd：")
         _print_indented(str(e))
         sys.exit(1)
     except SystemScopeRequiresRootError as e:
@@ -4426,12 +4425,12 @@ def _maybe_redirect_run_to_s6_supervision(args) -> bool:
     disarm_startup_watchdog()
     # Breadcrumb on stderr (keep stdout clean for scripts); gateway logs follow via s6-log.
     print(
-        "→ gateway is now running under s6 supervision (auto-restart on crash,\n"
-        "  dashboard supervised alongside if HERMES_DASHBOARD is set).\n"
-        "  This is the recommended setup for the s6 container image — the\n"
-        "  gateway will keep running even if it crashes.\n"
-        "  Use `--no-supervise` (or HERMES_GATEWAY_NO_SUPERVISE=1) to opt out\n"
-        "  and get the pre-s6 foreground behavior instead.",
+        "→ 网关现已在 s6 监管下运行（崩溃时自动重启，\n"
+        "  若设置了 HERMES_DASHBOARD，dashboard 也会一并被监管）。\n"
+        "  这是 s6 容器镜像推荐的方式 —\n"
+        "  即便崩溃，网关也会持续运行。\n"
+        "  使用 `--no-supervise`（或 HERMES_GATEWAY_NO_SUPERVISE=1）可退出该模式，\n"
+        "  改为 s6 之前的前台行为。",
         file=sys.stderr,
         flush=True,
     )
@@ -4453,8 +4452,8 @@ def _maybe_redirect_run_to_s6_supervision(args) -> bool:
         os.execvp("sleep", ["sleep", "infinity"])
     except OSError:
         print(
-            "→ `sleep` is unavailable; keeping the s6 CMD process alive "
-            "in-process until the container is stopped.",
+            "→ `sleep` 不可用；将在进程内保持 s6 CMD 进程存活，"
+            "直到容器停止。",
             file=sys.stderr,
             flush=True,
         )
@@ -4515,9 +4514,9 @@ def _refuse_from_inside_gateway(verb: str, reason: str) -> None:
     from tools.process_registry import _is_supervised_gateway_process
     if _is_supervised_gateway_process():
         print_error(
-            f"Refusing to {verb} the gateway from inside the gateway process.\n"
-            f"This command was blocked to prevent {reason}.\n"
-            f"Use `hermes gateway {verb}` from a shell outside the running gateway."
+            f"拒绝在网关进程内部对网关执行 {verb} 操作。\n"
+            f"此命令已被拦截，以防止{reason}。\n"
+            f"请在正在运行的网关之外的 shell 中使用 `hermes gateway {verb}`。"
         )
         sys.exit(1)
 
@@ -4531,7 +4530,7 @@ def _print_runtime_health() -> None:
     runtime_lines = _runtime_health_lines()
     if runtime_lines:
         print()
-        print("Recent gateway health:")
+        print("最近的网关健康状况：")
         for line in runtime_lines:
             print(f"  {line}")
 
@@ -4552,61 +4551,61 @@ def _cmd_setup(args):
 
 
 _WSL_FOREGROUND_HINT = (
-    "", "  hermes gateway run                              # direct foreground",
-    "  tmux new -s hermes 'hermes gateway run'         # persistent via tmux",
-    "  nohup hermes gateway run > ~/.hermes/logs/gateway.log 2>&1 &  # background",
+    "", "  hermes gateway run                              # 直接前台运行",
+    "  tmux new -s hermes 'hermes gateway run'         # 经 tmux 持久运行",
+    "  nohup hermes gateway run > ~/.hermes/logs/gateway.log 2>&1 &  # 后台运行",
 )
 # ``(exit_code, *lines)`` when a subcommand has no service backend, keyed by (subcommand, reason).
 # Reasons in check order: "termux", "wsl" (no operational systemd), "s6" / "container", "unsupported".
 # ``None`` exit code means plain return.
 _NO_BACKEND_MESSAGES = {
     ("install", "termux"): (1,
-        "Gateway service installation is not supported on Termux.", "Run manually: hermes gateway"),
+        "Termux 上不支持安装网关服务。", "Run manually: hermes gateway"),
     ("install", "wsl"): (1,
-        "WSL detected but systemd is not running.",
-        "Either enable systemd (add systemd=true to /etc/wsl.conf and restart WSL)",
-        "or run the gateway in foreground mode:", *_WSL_FOREGROUND_HINT),
+        "检测到 WSL，但 systemd 未运行。",
+        "要么启用 systemd（在 /etc/wsl.conf 中添加 systemd=true 并重启 WSL），",
+        "要么以前台模式运行网关：", *_WSL_FOREGROUND_HINT),
     ("install", "s6"): (None,
-        "Per-profile gateways are auto-registered when you create a profile.", "",
-        "  hermes profile create <name>     # creates the s6 service slot",
-        "  hermes -p <name> gateway start   # bring it up via s6",
-        "  hermes status                    # see currently-supervised gateways"),
+        "创建 profile 时会自动注册对应的 per-profile 网关。", "",
+        "  hermes profile create <name>     # 创建 s6 服务槽位",
+        "  hermes -p <name> gateway start   # 经 s6 启动它",
+        "  hermes status                    # 查看当前受监管的网关"),
     ("install", "container"): (0,
-        "Service installation is not needed inside a Docker container.",
-        "The container runtime is your service manager — use Docker restart policies instead:", "",
-        "  docker run --restart unless-stopped ...   # auto-restart on crash/reboot",
-        "  docker restart <container>                # manual restart", "",
-        "To run the gateway: hermes gateway run"),
+        "Docker 容器内无需安装服务。",
+        "容器运行时就是你的服务管理器 — 请改用 Docker 重启策略：", "",
+        "  docker run --restart unless-stopped ...   # 崩溃/重启后自动重启",
+        "  docker restart <container>                # 手动重启", "",
+        "运行网关：hermes gateway run"),
     ("install", "unsupported"): (1,
-        "Service installation not supported on this platform.", "Run manually: hermes gateway run"),
+        "此平台不支持安装服务。", "手动运行：hermes gateway run"),
     ("uninstall", "termux"): (1,
-        "Gateway service uninstall is not supported on Termux because there is no managed service to remove.",
-        "Stop manual runs with: hermes gateway stop"),
+        "Termux 上不支持卸载网关服务，因为没有可移除的受管服务。",
+        "停止手动运行的实例：hermes gateway stop"),
     ("uninstall", "s6"): (None,
-        "Per-profile gateways are auto-unregistered when you delete the profile.", "",
-        "  hermes profile delete <name>     # tears down the s6 service slot",
-        "  hermes -p <name> gateway stop    # stop without deleting the profile"),
+        "删除 profile 时会自动注销对应的 per-profile 网关。", "",
+        "  hermes profile delete <name>     # 拆除 s6 服务槽位",
+        "  hermes -p <name> gateway stop    # 停止但不删除 profile"),
     ("uninstall", "container"): (0,
-        "Service uninstall is not applicable inside a Docker container.",
-        "To stop the gateway, stop or remove the container:", "",
+        "Docker 容器内无需卸载服务。",
+        "要停止网关，请停止或移除容器：", "",
         "  docker stop <container>", "  docker rm <container>"),
     ("uninstall", "unsupported"): (1,
         "Running the gateway as a background service is not available on this platform "
         "(no systemd, launchd or Scheduled Tasks), so there is nothing to uninstall.",
         "Stop a manually started gateway with: hermes gateway stop"),
     ("start", "termux"): (1,
-        "Gateway service start is not supported on Termux because there is no system service manager.",
+        "Termux 上不支持启动网关服务，因为没有系统服务管理器。",
         "Run manually: hermes gateway"),
     ("start", "wsl"): (1,
-        "WSL detected but systemd is not available.",
-        "Run the gateway in foreground mode instead:", *_WSL_FOREGROUND_HINT, "",
-        "To enable systemd: add systemd=true to /etc/wsl.conf and run 'wsl --shutdown' from PowerShell."),
+        "检测到 WSL，但 systemd 不可用。",
+        "请改为以前台模式运行网关：", *_WSL_FOREGROUND_HINT, "",
+        "要启用 systemd：在 /etc/wsl.conf 中添加 systemd=true，并在 PowerShell 中运行 'wsl --shutdown'。"),
     ("start", "container"): (0,
-        "Service start is not applicable inside a Docker container.",
-        "The gateway runs as the container's main process.", "",
-        "  docker start <container>     # start a stopped container",
-        "  docker restart <container>   # restart a running container", "",
-        "Or run the gateway directly: hermes gateway run"),
+        "Docker 容器内无需启动服务。",
+        "网关会作为容器的主进程运行。", "",
+        "  docker start <container>     # 启动已停止的容器",
+        "  docker restart <container>   # 重启运行中的容器", "",
+        "或直接运行网关：hermes gateway run"),
     ("start", "unsupported"): (1,
         "Running the gateway as a background service is not available on this platform "
         "(no systemd, launchd or Scheduled Tasks).",
@@ -4636,10 +4635,10 @@ def _handle_no_backend(subcommand: str, *, wsl: bool, s6: bool) -> None:
 
 def _install_systemd_from_cli(args, *, force: bool, system: bool, run_as_user) -> None:
     if is_wsl():
-        print_warning("WSL detected — systemd services may not survive WSL restarts.")
+        print_warning("检测到 WSL — systemd 服务可能在 WSL 重启后消失。")
         _print_info_lines(
-            "  Consider running in foreground instead: hermes gateway run",
-            "  Or use tmux/screen for persistence: tmux new -s hermes 'hermes gateway run'",
+            "  可考虑改为前台运行：hermes gateway run",
+            "  或用 tmux/screen 保持持久：tmux new -s hermes 'hermes gateway run'",
         )
         print()
     # Honor --start-now/--start-on-login; else prompt on a TTY, default True headless.
@@ -4651,8 +4650,8 @@ def _install_systemd_from_cli(args, *, force: bool, system: bool, run_as_user) -
             return value
         return prompt_yes_no(question, True) if not non_interactive else True
 
-    start_now = _flag("start_now", "Start the gateway now after installing the service?")
-    start_on_login = _flag("start_on_login", "Start the gateway automatically on login/boot with systemd?")
+    start_now = _flag("start_now", "安装服务后立即启动网关？")
+    start_on_login = _flag("start_on_login", "随登录/开机自动以 systemd 启动网关？")
     systemd_install(
         force=force, system=system, run_as_user=run_as_user,
         enable_on_startup=start_on_login, non_interactive=non_interactive,
@@ -4663,7 +4662,7 @@ def _install_systemd_from_cli(args, *, force: bool, system: bool, run_as_user) -
 
 def _cmd_install(args):
     if is_managed():
-        managed_error("install gateway service")
+        managed_error("安装网关服务")
         return
     force = getattr(args, "force", False)
     # `--force` doubles as the reinstall flag here; a served profile's unit would only ever exit 78.
@@ -4691,9 +4690,9 @@ def _cmd_install(args):
 
 
 def _cmd_uninstall(args):
-    _refuse_from_inside_gateway("uninstall", "the gateway from terminating itself")
+    _refuse_from_inside_gateway("uninstall", "网关自我终止")
     if is_managed():
-        managed_error("uninstall gateway service")
+        managed_error("卸载网关服务")
         return
     system = getattr(args, "system", False)
     if is_termux():
@@ -4759,7 +4758,7 @@ def _cmd_start(args):
             return
         killed = kill_gateway_processes(all_profiles=True)
         if killed:
-            print(f"✓ Killed {killed} stale gateway process(es) across all profiles")
+            print(f"✓ 已在所有 profile 中终止 {killed} 个残留网关进程")
             _wait_for_gateway_exit(timeout=10.0, force_after=5.0)
             _wait_for_api_server_port_free()
 
@@ -4773,7 +4772,7 @@ def _cmd_start(args):
 
 
 def _cmd_stop(args):
-    _refuse_from_inside_gateway("stop", "restart loops")
+    _refuse_from_inside_gateway("stop", "重启循环")
     stop_all = getattr(args, "all", False)
     system = getattr(args, "system", False)
     if not stop_all and not find_gateway_pids() and (
@@ -4804,16 +4803,16 @@ def _cmd_stop(args):
     if stop_all:
         total = kill_gateway_processes(all_profiles=True) + (1 if service_available else 0)
         if total:
-            print(f"✓ Stopped {total} gateway process(es) across all profiles")
+            print(f"✓ 已在所有 profile 中停止 {total} 个网关进程")
         else:
-            print("✗ No gateway processes found")
+            print("✗ 未找到网关进程")
     elif not service_available:
         if stop_profile_gateway():
-            print("✓ Stopped gateway for this profile")
+            print("✓ 已停止该 profile 的网关")
         else:
-            print("✗ No gateway running for this profile")
+            print("✗ 该 profile 没有正在运行的网关")
     else:
-        print(f"✓ Stopped {get_service_name()} service")
+        print(f"✓ 已停止 {get_service_name()} 服务")
 
 
 def _stop_host_multiplexer(owner) -> int:
@@ -4859,20 +4858,20 @@ def _restart_all(system: bool) -> None:
         stopped = _stop_host_multiplexer(owner)
         total = stopped + (1 if service_stopped else 0)
         if total:
-            print(f"✓ Stopped the host gateway (PID {owner.pid}; serves "
-                  f"{', '.join(owner.profiles) or 'unknown'})")
+            print(f"✓ 已停止宿主网关（PID {owner.pid}；服务于 "
+                  f"{', '.join(owner.profiles) or '未知'}）")
         _print_unfolded_gateway_note(owner)
     else:
         total = kill_gateway_processes(all_profiles=True) + (1 if service_stopped else 0)
         if total:
-            print(f"✓ Stopped {total} gateway process(es) across all profiles")
+            print(f"✓ 已在所有 profile 中停止 {total} 个网关进程")
     _wait_for_gateway_exit(timeout=10.0, force_after=5.0)
     _wait_for_api_server_port_free()
     # Retract the stopped owner's rendezvous record. Leaving it made this very function a silent
     # no-op: the re-entered `gateway run` below read the corpse's record and ATTACHED to it.
     _discard_dead_host_record()
 
-    print("Starting gateway...")
+    print("正在启动网关……")
     # Even without a registered task, gateway_windows.start() uses the detached launcher.
     kind = _installed_service_kind_for(is_windows)
     if kind is None:
@@ -4884,7 +4883,7 @@ def _restart_all(system: bool) -> None:
 
 
 def _cmd_restart(args):
-    _refuse_from_inside_gateway("restart", "restart loops")
+    _refuse_from_inside_gateway("restart", "重启循环")
     system = getattr(args, "system", False)
     restart_all = getattr(args, "all", False)
     force = getattr(args, "force", False)
@@ -4920,10 +4919,10 @@ def _cmd_restart(args):
         if linger_ok is not True:
             import getpass
             _print_lines(
-                "", "⚠ Cannot restart gateway as a service — linger is not enabled.",
-                "  The gateway user service requires linger to function on headless servers.", "",
-                f"  Run:  sudo loginctl enable-linger {getpass.getuser()}", "",
-                "  Then restart the gateway:", "    hermes gateway restart",
+                "", "⚠ 无法以服务方式重启网关 — 未启用 linger。",
+                "  在无头服务器上，网关用户服务需要 linger 才能正常工作。", "",
+                f"  运行：sudo loginctl enable-linger {getpass.getuser()}", "",
+                "  然后重启网关：", "    hermes gateway restart",
             )
             return
 
@@ -4957,28 +4956,28 @@ def _cmd_restart(args):
 
 # ``hermes gateway status`` hints for a manually-run / stopped gateway, keyed by host kind.
 _STATUS_RUNNING_HINTS = {
-    "termux": ("Termux note:", "  Android may stop background jobs when Termux is suspended"),
+    "termux": ("Termux 提示：", "  当 Termux 被挂起时，Android 可能停止后台任务"),
     "wsl": (
-        "WSL note:", "  The gateway is running in foreground/manual mode (recommended for WSL).",
-        "  Use tmux or screen for persistence across terminal closes.",
+        "WSL 提示：", "  网关正以前台/手动模式运行（WSL 下推荐）。",
+        "  使用 tmux 或 screen 可在终端关闭后保持运行。",
     ),
-    "windows": ("To install as a Windows Scheduled Task (auto-start on login):", "  hermes gateway install"),
+    "windows": ("安装为 Windows 计划任务（登录时自动启动）：", "  hermes gateway install"),
     "other": (
-        "To install as a service:", "  hermes gateway install", "  sudo hermes gateway install --system",
+        "安装为服务：", "  hermes gateway install", "  sudo hermes gateway install --system",
     ),
 }
 _STATUS_STOPPED_HINTS = {
     "termux": (
-        "  nohup hermes gateway run > ~/.hermes/logs/gateway.log 2>&1 &  # Best-effort background start",
+        "  nohup hermes gateway run > ~/.hermes/logs/gateway.log 2>&1 &  # 尽力而为的后台启动",
     ),
     "wsl": (
-        "  tmux new -s hermes 'hermes gateway run'         # persistent via tmux",
-        "  nohup hermes gateway run > ~/.hermes/logs/gateway.log 2>&1 &  # background",
+        "  tmux new -s hermes 'hermes gateway run'         # 经 tmux 持久运行",
+        "  nohup hermes gateway run > ~/.hermes/logs/gateway.log 2>&1 &  # 后台运行",
     ),
-    "windows": ("  hermes gateway install  # Install as Windows Scheduled Task (auto-start on login)",),
+    "windows": ("  hermes gateway install  # 安装为 Windows 计划任务（登录时自动启动）",),
     "other": (
-        "  hermes gateway install  # Install as user service",
-        "  sudo hermes gateway install --system  # Install as boot-time system service",
+        "  hermes gateway install  # 安装为用户服务",
+        "  sudo hermes gateway install --system  # 安装为开机启动的系统服务",
     ),
 }
 
@@ -5046,7 +5045,7 @@ def _cmd_migrate_legacy(args):
     dry_run = getattr(args, "dry_run", False)
     yes = getattr(args, "yes", False)
     if not supports_systemd_services() and not is_macos():
-        print("Legacy unit migration only applies to systemd-based Linux hosts.")
+        print("遗留单元迁移仅适用于基于 systemd 的 Linux 主机。")
         return
     remove_legacy_hermes_units(interactive=not yes, dry_run=dry_run)
 
@@ -5078,13 +5077,13 @@ def print_systemd_linger_guidance() -> None:
     """Print the current linger status and the fix when it is disabled."""
     linger_enabled, linger_detail = get_systemd_linger_status()
     if linger_enabled is True:
-        print("✓ Systemd linger is enabled (service survives logout)")
+        print("✓ 已启用 systemd linger（服务在注销后存活）")
     elif linger_enabled is False:
-        print("⚠ Systemd linger is disabled (gateway may stop when you log out)")
-        print("  Run: sudo loginctl enable-linger $USER")
+        print("⚠ systemd linger 已禁用（注销后网关可能停止）")
+        print("  运行：sudo loginctl enable-linger $USER")
     else:
-        print(f"⚠ Could not verify systemd linger ({linger_detail})")
-        print("  If you want the gateway user service to survive logout, run:")
+        print(f"⚠ 无法验证 systemd linger（{linger_detail}）")
+        print("  若希望网关用户服务在注销后继续存活，请运行：")
         print("  sudo loginctl enable-linger $USER")
 
 

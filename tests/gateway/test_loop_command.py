@@ -78,8 +78,8 @@ def _make_event(text: str) -> MessageEvent:
 async def test_gateway_loop_create_captures_route(loop_env):
     runner = _make_runner()
     response = await GatewayRunner._handle_loop_command(runner, _make_event("/loop 5m check the deploy"))
-    assert "Loop set" in response
-    assert "every 5m" in response
+    assert "循环已设置" in response
+    assert "每 5m" in response
 
     state = loops.load_loop("sid-gateway-loop")
     assert state is not None
@@ -98,10 +98,10 @@ async def test_gateway_loop_status_pause_stop(loop_env):
     assert "poll CI" in status
 
     paused = await GatewayRunner._handle_loop_command(runner, _make_event("/loop pause"))
-    assert "paused" in paused.lower()
+    assert "已暂停" in paused
 
     stopped = await GatewayRunner._handle_loop_command(runner, _make_event("/loop stop"))
-    assert "stopped" in stopped.lower()
+    assert "已停止" in stopped
 
 
 @pytest.mark.asyncio
@@ -111,7 +111,7 @@ async def test_gateway_loop_goal_note_when_goal_active(loop_env):
     GoalManager(session_id="sid-gateway-loop").set("finish the migration")
     runner = _make_runner()
     response = await GatewayRunner._handle_loop_command(runner, _make_event("/loop 5m poll CI"))
-    assert "active /goal" in response
+    assert "进行中的 /goal" in response
 
 
 @pytest.mark.asyncio

@@ -55,10 +55,10 @@ class TestCronListDispatchLine:
         cron_list()
 
         out = capsys.readouterr().out
-        assert "Dispatch:" in out
-        assert "catch-up after missed fire" in out
+        assert "调度：" in out
+        assert "错过触发后的补跑" in out
         assert "2026-09-01T09:00:00+00:00" in out  # scheduled instant
-        assert "31m late" in out
+        assert "延迟 31m" in out
 
     def test_on_time_dispatch_rendered_quietly(self, tmp_cron_dir, capsys, monkeypatch):
         monkeypatch.setattr(
@@ -70,9 +70,9 @@ class TestCronListDispatchLine:
         cron_list()
 
         out = capsys.readouterr().out
-        assert "Dispatch:" in out
-        assert "on time" in out
-        assert "catch-up" not in out
+        assert "调度：" in out
+        assert "准时" in out
+        assert "错过触发" not in out
 
     def test_no_stamp_no_dispatch_line(self, tmp_cron_dir, capsys, monkeypatch):
         monkeypatch.setattr(
@@ -82,7 +82,7 @@ class TestCronListDispatchLine:
 
         cron_list()
 
-        assert "Dispatch:" not in capsys.readouterr().out
+        assert "调度：" not in capsys.readouterr().out
 
 
 class TestStatusLateJobsCallout:
@@ -105,10 +105,10 @@ class TestStatusLateJobsCallout:
         _print_active_jobs_summary(jobs)
 
         out = capsys.readouterr().out
-        assert "1 job(s) last fired late" in out
-        assert "catch-up after missed fire" in out
+        assert "有 1 个任务上次为延迟触发（错过触发后的补跑）" in out
+        assert "错过触发后的补跑" in out
         assert "abc123" in out
-        assert "31m late" in out
+        assert "延迟 31m" in out
         # On-time job is not in the callout.
         assert "def456" not in out
 
@@ -124,7 +124,7 @@ class TestStatusLateJobsCallout:
 
         _print_active_jobs_summary(jobs)
 
-        assert "fired late" not in capsys.readouterr().out
+        assert "延迟触发" not in capsys.readouterr().out
 
 
 class TestDisplayHelpers:
@@ -143,5 +143,5 @@ class TestDisplayHelpers:
 
     def test_dispatch_display_late_kind(self):
         line = _dispatch_display(_catch_up_stamp(600.0, kind="late"))
-        assert "late" in line
+        assert "延迟" in line
         assert "10m" in line

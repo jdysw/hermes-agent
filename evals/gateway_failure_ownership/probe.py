@@ -302,7 +302,8 @@ async def main():
             reached = (
                 hit == ["history-read"]
                 and len(requests) == before_requests
-                and "history is temporarily unavailable" in response
+                and ("history is temporarily unavailable" in response
+                     or "历史记录暂时不可用" in response)
             )
         elif fault == "foreign-writer":
             reached = hit == ["foreign-writer-committed"] and len(requests) == before_requests

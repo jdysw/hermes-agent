@@ -33,7 +33,7 @@ def print_truncated(more: int | None, hint: str = "") -> None:
     one row past its cap (``LIMIT n+1``) and knows just that at least one more exists.
     ``hint`` names how to see the rest (``"use --limit 40 to see more"``).
     """
-    count = f"{more} more" if more is not None else "more not shown"
+    count = f"还有 {more} 个" if more is not None else "还有更多未显示"
     suffix = f" ({hint})" if hint else ""
     print(color(f"  … {count}{suffix}", Colors.DIM))
 

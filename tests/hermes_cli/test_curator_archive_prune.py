@@ -37,7 +37,7 @@ def test_archive_refuses_pinned(monkeypatch, capsys):
     assert rc == 1
     assert called == []
     out = capsys.readouterr().out
-    assert "pinned" in out.lower()
+    assert "已固定" in out
     assert "hermes curator unpin" in out
 
 

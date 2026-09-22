@@ -106,7 +106,7 @@ async def test_steer_calls_agent_steer_and_does_not_interrupt():
 
     # The handler replied with a confirmation
     assert result is not None
-    assert "steer" in result.lower() or "queued" in result.lower()
+    assert "steer" in result.lower() or "已排队" in result
     # The agent's steer() was called with the payload (prefix stripped)
     running_agent.steer.assert_called_once()
     injected = running_agent.steer.call_args.args[0]
@@ -166,7 +166,7 @@ async def test_steer_agent_without_steer_method_falls_back():
 
     assert result is not None
     # Must mention queueing since steer wasn't available
-    assert "queued" in result.lower()
+    assert "已排队" in result
     assert sk in adapter._pending_messages
     assert adapter._pending_messages[sk].text == "fallback"
     assert (

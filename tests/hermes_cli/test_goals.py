@@ -131,7 +131,7 @@ class TestGoalManager:
         assert state.max_turns == 5
         assert state.turns_used == 0
         assert mgr.is_active()
-        assert "active" in mgr.status_line().lower()
+        assert "进行中" in mgr.status_line()
         assert "port the thing" in mgr.status_line()
 
 
@@ -419,7 +419,7 @@ class TestStatusLineSubgoalCount:
         mgr.add_subgoal("a")
         mgr.add_subgoal("b")
         line = mgr.status_line()
-        assert "2 subgoals" in line
+        assert "2 个子目标" in line
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -788,9 +788,9 @@ class TestGoalContractSerialization:
         from hermes_cli.goals import GoalContract
 
         block = GoalContract(outcome="X", verification="Y").render_block()
-        assert "Outcome: X" in block
-        assert "Verification: Y" in block
-        assert "Constraints" not in block
+        assert "成果：X" in block
+        assert "验证：Y" in block
+        assert "约束" not in block
 
 
 class TestGoalManagerContract:
@@ -975,10 +975,10 @@ class TestBlockedVerdict:
         assert decision["verdict"] == "blocked"
         assert decision["status"] == "paused"
         assert decision["should_continue"] is False
-        assert "unachievable" in decision["message"].lower()
+        assert "无法达成" in decision["message"]
         assert mgr.state is not None
         assert mgr.state.status == "paused"
-        assert "unachievable" in (mgr.state.paused_reason or "").lower()
+        assert "无法达成" in (mgr.state.paused_reason or "")
 
 
 def test_goal_session_db_is_the_registry_shared_handle(hermes_home):

@@ -121,7 +121,7 @@ class TestMissingProviderKeyBlocks:
         assert success is False
         assert error is not None
         assert "[blocked_config]" in error
-        assert "blocked" in output.lower() or "BLOCKED" in output
+        assert "拦截" in output or "BLOCKED" in output
 
     def test_single_alert_across_two_ticks_and_blocked_status(self, tmp_path):
         """Two ticks of a blocked job through run_one_job deliver exactly ONE

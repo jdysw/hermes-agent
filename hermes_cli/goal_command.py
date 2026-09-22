@@ -36,7 +36,7 @@ def _show(mgr, arg, render):
 
 
 def _pause(mgr, arg, render):
-    state = mgr.pause(reason="user-paused")
+    state = mgr.pause(reason="用户暂停")
     return GoalCommandResult(
         render("gateway.goal.paused", "⏸ Goal paused: {goal}", goal=state.goal) if state
         else render("gateway.goal.no_goal_set", "No goal set."),
@@ -60,38 +60,38 @@ def _clear(mgr, arg, render):
 
 
 def _unwait(mgr, arg, render):
-    return GoalCommandResult("▶ Wait barrier cleared — goal loop resumes." if mgr.stop_waiting()
-                             else "No wait barrier set.")
+    return GoalCommandResult("▶ 等待屏障已解除——目标循环恢复。" if mgr.stop_waiting()
+                             else "未设置等待屏障。")
 
 
 def _wait(mgr, arg):
     if not arg:
-        return GoalCommandResult("Usage: /goal wait <pid> [reason]", error=True)
+        return GoalCommandResult("用法：/goal wait <pid> [原因]", error=True)
     tokens = arg.split(None, 1)
     try:
         pid = int(tokens[0])
     except ValueError:
-        return GoalCommandResult("/goal wait: <pid> must be an integer process id.", error=True)
+        return GoalCommandResult("/goal wait：<pid> 必须是整数进程 id。", error=True)
     reason = tokens[1].strip() if len(tokens) > 1 else ""
     mgr.wait_on(pid, reason=reason)
     suffix = f" ({reason})" if reason else ""
-    return GoalCommandResult(f"⏳ Goal parked on pid {pid}{suffix}. Loop pauses until it exits.")
+    return GoalCommandResult(f"⏳ 目标已挂起在 pid {pid}{suffix}。循环将暂停直到它退出。")
 
 
 def _gate_add(mgr, arg):
     gate = mgr.add_gate(arg)
-    return GoalCommandResult(f"⚿ Gate added: $ {gate.command} "
-                             f"({gate.max_retries} retries, {gate.timeout_seconds}s timeout). "
-                             "It must pass before the goal can complete.")
+    return GoalCommandResult(f"⚿ 门禁已添加：$ {gate.command}"
+                             f"（{gate.max_retries} 次重试，{gate.timeout_seconds} 秒超时）。"
+                             "目标完成前必须先通过它。")
 
 
 def _gate_remove(mgr, arg):
-    return GoalCommandResult(f"✓ Gate removed: $ {mgr.remove_gate(int(arg))}")
+    return GoalCommandResult(f"✓ 门禁已移除：$ {mgr.remove_gate(int(arg))}")
 
 
 def _gate_clear(mgr, arg):
     count = mgr.clear_gates()
-    return GoalCommandResult(f"✓ Cleared {count} gate{'s' if count != 1 else ''}.")
+    return GoalCommandResult(f"✓ 已清除 {count} 个门禁。")
 
 
 _GATE_HANDLERS = {"add": _gate_add, "remove": _gate_remove, "rm": _gate_remove, "clear": _gate_clear}
@@ -108,7 +108,7 @@ def _gate(mgr, arg, authorize_gate):
     verb, rest = tokens[0].lower(), tokens[1].strip() if len(tokens) > 1 else ""
     handler = _GATE_HANDLERS.get(verb)
     if handler is None or (verb == "clear" and rest) or (verb != "clear" and not rest):
-        return GoalCommandResult("Usage: /goal gate [list | add <command> | remove <N> | clear]", error=True)
+        return GoalCommandResult("用法：/goal gate [list | add <命令> | remove <N> | clear]", error=True)
     # Gates run shell commands without a later approval. The adapter must explicitly
     # authorize creation; recovery commands remain available to non-admin senders.
     if verb == "add" and (denial := authorize_gate()):
@@ -117,15 +117,15 @@ def _gate(mgr, arg, authorize_gate):
         return handler(mgr, rest)
     except (RuntimeError, ValueError, IndexError) as exc:
         operation = "remove" if verb == "rm" else verb
-        return GoalCommandResult(f"/goal gate {operation}: {exc}", error=True)
+        return GoalCommandResult(f"/goal gate {operation}：{exc}", error=True)
 
 
 def _set(mgr, arg, *, drafting, last_user_message, render, progress):
     if drafting:
         if not arg:
-            return GoalCommandResult("Usage: /goal draft <objective in plain language>", error=True)
+            return GoalCommandResult("用法：/goal draft <用自然语言描述的目标>", error=True)
         if progress is not None:
-            progress("Drafting completion contract…")
+            progress("正在起草完成契约……")
         try:
             contract = goals.draft_contract(arg)
         except Exception as exc:
@@ -139,19 +139,19 @@ def _set(mgr, arg, *, drafting, last_user_message, render, progress):
     output = render("gateway.goal.set", "⊙ Goal set ({budget}-turn budget): {goal}",
                     budget=state.max_turns, goal=state.goal)
     if state.has_contract():
-        label = "Drafted completion contract:" if drafting else "Completion contract:"
+        label = "已起草的完成契约：" if drafting else "完成契约："
         output += f"\n{label}\n{state.contract.render_block()}"
     if drafting:
-        output += ("\nTighten any field by re-setting the goal with inline lines "
-                   "(e.g. verify: <command>), then /goal resume. Use /goal show to review."
+        output += ("\n可用内联行（例如 verify: <command>）重新设置目标来收紧任意字段，"
+                   "然后 /goal resume。用 /goal show 查看。"
                    if state.has_contract() else
-                   "\nCouldn't draft a contract (aux model unavailable) — running as a "
-                   "free-form goal. The per-turn judge still applies.")
+                   "\n无法起草契约（辅助模型不可用）——将按自由形式目标运行。"
+                   "每回合的评判器仍然生效。")
     else:
-        against = " against the contract above" if state.has_contract() else ""
-        output += (f"\nAfter each turn, a judge model checks if the goal is done{against}. "
-                   "Hermes keeps working until it is, you pause/clear it, or the budget is "
-                   "exhausted. Use /goal status, /goal show, /goal pause, /goal resume, /goal clear.")
+        against = "是否已完成（对照上面的契约）" if state.has_contract() else "是否已完成"
+        output += (f"\n每个回合之后，评判器模型会检查目标{against}。"
+                   "Hermes 会持续工作，直到目标完成、你暂停/清除它，或预算耗尽。"
+                   "可用 /goal status、/goal show、/goal pause、/goal resume、/goal clear。")
     return GoalCommandResult(output, goals.goal_kick_prompt(state.goal, last_user_message), kickoff=True)
 
 
@@ -190,5 +190,5 @@ def dispatch_goal_command(
                     render=render, progress=progress)
     except (RuntimeError, ValueError, IndexError) as exc:
         output = (render("gateway.goal.invalid", "Invalid goal: {error}", error=str(exc))
-                  if prefix == "Invalid goal" else f"{prefix}: {exc}")
+                  if prefix == "Invalid goal" else f"{prefix}：{exc}")
         return GoalCommandResult(output, error=True)

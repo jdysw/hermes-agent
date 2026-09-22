@@ -120,7 +120,7 @@ def test_pin_fails_loudly_when_write_does_not_land(pin_env, capsys, monkeypatch)
     rec = env["usage"].get_record(name)
     assert not rec.get("pinned"), "usage record claims pinned=true despite failed eligibility"
     # Error output must explain the refusal, not just fail quietly.
-    assert "pin" in out.lower(), "refusal must mention the pin outcome"
+    assert "固定" in out, "refusal must mention the pin outcome"
 
 
 # ---------------------------------------------------------------------------
@@ -159,7 +159,7 @@ def test_pinned_eligible_unmanaged_skill_visible_in_status(pin_env):
         status_rc = cli._cmd_status(Namespace())
     assert status_rc == 0
     status = buf2.getvalue()
-    assert "legacy-skill" in status and "pinned" in status.lower(), (
+    assert "legacy-skill" in status and "已固定" in status, (
         "pin landed on disk but the skill is absent from `curator status` "
         "— the invisible-pin defect."
     )
@@ -185,7 +185,7 @@ def test_pin_managed_skill_end_to_end(pin_env):
     with redirect_stdout(buf):
         rc = cli._cmd_pin(_Args("managed-skill"))
     assert rc == 0, "managed skill pin must succeed"
-    assert "pinned" in buf.getvalue().lower()
+    assert "已固定" in buf.getvalue()
 
     assert usage.get_record("managed-skill").get("pinned") is True
 
@@ -194,6 +194,6 @@ def test_pin_managed_skill_end_to_end(pin_env):
         assert cli._cmd_status(Namespace()) == 0
     status = buf2.getvalue()
     assert "managed-skill" in status
-    assert "pinned" in status.lower(), (
+    assert "已固定" in status, (
         "managed+pinned skill missing from the pinned list in status output"
     )

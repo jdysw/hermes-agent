@@ -213,7 +213,7 @@ class TestGuidanceNeverNamesLiveDb:
         assert "sessions recover --source" in body
         assert "--inspect-only" in body
         assert "--output" in body
-        assert "do NOT" in body
+        assert "切勿" in body
 
     def test_run_agent_corrupt_explanation(self):
         from run_agent import AIAgent

@@ -65,7 +65,7 @@ async def test_steer_pending_sentinel_preserves_fifo_head():
         _make_event("/steer wait up", channel_context="ctx3")
     )
     assert result is not None
-    assert "queued" in result.lower()
+    assert "已排队" in result
 
     # Q1 still in slot, Q2 in overflow, Q3 appended to overflow — order preserved
     assert adapter._pending_messages[sk].text == "Q1"
@@ -89,7 +89,7 @@ async def test_steer_no_steer_method_preserves_fifo_head():
         _make_event("/steer fallback", channel_context="ctx3")
     )
     assert result is not None
-    assert "queued" in result.lower()
+    assert "已排队" in result
 
     assert adapter._pending_messages[sk].text == "Q1"
     overflow = runner._queued_events[sk]

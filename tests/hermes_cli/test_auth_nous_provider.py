@@ -821,9 +821,9 @@ def test_refresh_token_reuse_detection_surfaces_actionable_message():
         )
 
     message = str(exc_info.value)
-    assert "refresh-token reuse" in message.lower() or "refresh token reuse" in message.lower()
+    assert "重复使用" in message or "reuse" in message.lower()
     # The message must mention the external-process cause and give next steps.
-    assert "external process" in message.lower() or "monitoring script" in message.lower()
+    assert "外部进程" in message or "监控脚本" in message or "external process" in message.lower()
     assert "hermes auth add nous" in message.lower()
     # Must still be classified as invalid_grant + relogin_required.
     assert exc_info.value.code == "invalid_grant"

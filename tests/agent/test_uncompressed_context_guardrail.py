@@ -64,7 +64,7 @@ def test_production_warn_emits_once_and_dedups():
 
     agent._emit_warning.assert_called_once()
     msg = agent._emit_warning.call_args[0][0]
-    assert "exceeds the model context window" in msg
+    assert "已超出模型" in msg and "上下文窗口" in msg
     assert "compression.enabled: false" in msg
     assert "10,000 tokens" in msg
 

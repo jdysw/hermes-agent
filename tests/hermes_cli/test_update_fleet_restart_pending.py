@@ -361,7 +361,7 @@ def test_run_pending_restart_true_when_no_gateways(monkeypatch, capsys):
     # And the Windows scope: an installed Windows gateway service would be restarted for real.
     monkeypatch.setattr("hermes_cli.gateway_windows.is_installed", lambda: False)
     assert update_cmd._run_pending_fleet_restart() is True
-    assert "Pending fleet restart completed" in capsys.readouterr().out
+    assert "待处理的网关重启已完成" in capsys.readouterr().out
 
 
 def test_run_pending_restart_skips_gateways_already_on_checkout_code(monkeypatch, capsys):
@@ -439,7 +439,7 @@ def test_clean_update_warns_about_surviving_pre_update_serve_runtime(
     out = capsys.readouterr().out
     assert "pid 5555" in out
     assert "serve" in out
-    assert "pre-update code" in out
+    assert "更新前的代码" in out
 
 
 def test_clean_update_escalates_surviving_serve_as_unaccounted(
@@ -495,7 +495,7 @@ def test_clean_update_escalates_surviving_serve_as_unaccounted(
     assert excinfo.value.code == 1
 
     out = capsys.readouterr().out
-    assert "pid 5555" in out and "pre-update code" in out
+    assert "pid 5555" in out and "更新前的代码" in out
     assert "Planned runtimes the restart phase never touched" in out
     assert "serve [default] pid 5555" in out
 
@@ -616,7 +616,7 @@ def test_already_up_to_date_runs_pending_restart_when_marker_present(
     assert seen["ran"] is True
     assert not update_cmd_fleet._fleet_restart_obligation_armed()
     out = capsys.readouterr().out
-    assert "did not restart running gateways" in out
+    assert "未重启正在运行的网关" in out
 
 
 def test_already_up_to_date_runs_pending_restart_when_receipt_skewed(
@@ -672,7 +672,7 @@ def test_already_up_to_date_runs_pending_restart_when_receipt_skewed(
 
     assert seen["ran"] is True
     out = capsys.readouterr().out
-    assert "did not restart running gateways" in out
+    assert "未重启正在运行的网关" in out
 
 
 def test_already_up_to_date_skips_restart_when_nothing_pending(
@@ -696,14 +696,14 @@ def test_already_up_to_date_skips_restart_when_nothing_pending(
     hermes_main.cmd_update(args)
 
     assert seen["ran"] is False
-    assert "did not restart running gateways" not in capsys.readouterr().out
+    assert "未重启正在运行的网关" not in capsys.readouterr().out
 
 
 def test_startup_warn_prints_when_marker_present(capsys):
     update_cmd._write_fleet_restart_pending_marker()
     update_cmd._warn_pending_fleet_restart_on_startup()
     err = capsys.readouterr().err
-    assert "did not restart running gateways" in err
+    assert "未重启正在运行的网关" in err
     assert "hermes gateway restart" in err
 
 

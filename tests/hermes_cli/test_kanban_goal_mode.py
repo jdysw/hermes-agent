@@ -223,5 +223,5 @@ class TestCLIJudgeGate:
         err = capsys.readouterr().err
         assert rc != 0, "blocked verdict must reject the completion"
         assert complete_calls == [], "an unachievable goal must never reach complete_task"
-        assert "unachievable" in err.lower()
+        assert "不可达成" in err
         assert "kanban block" in err.lower()

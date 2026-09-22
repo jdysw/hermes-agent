@@ -88,8 +88,8 @@ async def test_failed_persist_is_reported_as_failed(fake_cli):
     # The action the user approved still ran.
     assert out.startswith("🧹 Conversation cleared.")
     # ...but the message must not promise an opt-out that was never written.
-    assert "will run without confirmation" not in out
-    assert "Could not save that preference" in out
+    assert "不再询问即执行" not in out
+    assert "无法保存该偏好" in out
 
 
 @pytest.mark.asyncio
@@ -99,8 +99,8 @@ async def test_successful_persist_still_reports_success(fake_cli):
     out = await _resolve(_runner(), "always")
 
     assert fake_cli.calls == [("approvals.destructive_slash_confirm", False)]
-    assert "will run without confirmation" in out
-    assert "Could not save that preference" not in out
+    assert "不再询问即执行" in out
+    assert "无法保存该偏好" not in out
 
 
 @pytest.mark.asyncio
@@ -113,7 +113,7 @@ async def test_raising_persist_is_also_reported_as_failed(fake_cli):
     out = await _resolve(_runner(), "always")
 
     assert out.startswith("🧹 Conversation cleared.")
-    assert "will run without confirmation" not in out
+    assert "不再询问即执行" not in out
 
 
 @pytest.mark.asyncio
@@ -129,4 +129,4 @@ async def test_cancel_does_not_persist(fake_cli):
     out = await _resolve(_runner(), "cancel")
 
     assert fake_cli.calls == []
-    assert "cancelled" in out.lower()
+    assert "已取消" in out

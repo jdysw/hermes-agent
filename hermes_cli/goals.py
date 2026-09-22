@@ -264,8 +264,8 @@ DRAFT_CONTRACT_SYSTEM_PROMPT = (
 _CONTRACT_FIELDS = ("outcome", "verification", "constraints", "boundaries", "stop_when")
 
 _CONTRACT_LABELS = {
-    "outcome": "Outcome", "verification": "Verification", "constraints": "Constraints",
-    "boundaries": "Boundaries", "stop_when": "Stop when blocked",
+    "outcome": "成果", "verification": "验证", "constraints": "约束",
+    "boundaries": "边界", "stop_when": "受阻时停止",
 }
 
 # Inline-input aliases the user may type before a value (`verify: tests pass`, `done when: ...`).
@@ -305,7 +305,7 @@ class GoalContract:
 
     def render_block(self) -> str:
         """Non-empty fields as a labelled block; empty contract → empty string."""
-        return "\n".join(f"- {_CONTRACT_LABELS[f]}: {getattr(self, f).strip()}" for f in _CONTRACT_FIELDS if getattr(self, f).strip())
+        return "\n".join(f"- {_CONTRACT_LABELS[f]}：{getattr(self, f).strip()}" for f in _CONTRACT_FIELDS if getattr(self, f).strip())
 
 
 def parse_contract(text: str) -> Tuple[str, GoalContract]:
@@ -334,7 +334,7 @@ def parse_contract(text: str) -> Tuple[str, GoalContract]:
 
 
 def _render_extra_criteria(subgoals: List[str]) -> str:
-    return "\n".join(f"- Extra criterion {i}: {text}" for i, text in enumerate(subgoals, start=1))
+    return "\n".join(f"- 附加验收标准 {i}：{text}" for i, text in enumerate(subgoals, start=1))
 
 
 # ── Quality gates ─────────────────────────────────────────────────────
@@ -832,19 +832,19 @@ def _render_background_block(background_processes: Optional[List[Dict[str, Any]]
         tail = _truncate(str(p.get("output_preview") or "").replace("\n", " ").strip(), 120)
         line = f"- pid {p['pid']}"
         if p.get("session_id"):
-            line += f" / session {p['session_id']}"
-        line += f": {cmd}"
+            line += f" / 会话 {p['session_id']}"
+        line += f"：{cmd}"
         if p.get("uptime_seconds") is not None:
-            line += f" (running {p['uptime_seconds']}s)"
+            line += f"（已运行 {p['uptime_seconds']} 秒）"
         # Surface the process's own trigger so the judge can wait on a mid-run signal, not just exit.
         wps = p.get("watch_patterns")
         if wps:
-            hit = " [already matched]" if p.get("watch_hit") else ""
+            hit = " [已匹配]" if p.get("watch_hit") else ""
             line += f" | watch_patterns={wps}{hit}"
         elif p.get("notify_on_complete"):
             line += " | notify_on_complete"
         if tail:
-            line += f" | recent output: {tail}"
+            line += f" | 最近输出：{tail}"
         lines.append(line)
     if not lines:
         return ""
@@ -1058,7 +1058,7 @@ def _decision(status, should_continue: bool, prompt: Optional[str], verdict: str
 
 _JUDGE_CONFIG_HINT = (
     "~/.hermes/config.yaml:\n  auxiliary:\n    goal_judge:\n      provider: {provider}\n      model: {model}\n"
-    "Then /goal resume to continue."
+    "然后 /goal resume 继续。"
 )
 
 
@@ -1093,28 +1093,28 @@ class GoalManager:
     def status_line(self) -> str:
         s = self._state
         if s is None or s.status == "cleared":
-            return "No active goal. Set one with /goal <text>."
-        turns = f"{s.turns_used}/{s.max_turns} turns"
-        sub = f", {len(s.subgoals)} subgoal{'s' if len(s.subgoals) != 1 else ''}" if s.subgoals else ""
-        con = ", contract" if self.has_contract() else ""
-        gat = f", {len(s.gates)} gate{'s' if len(s.gates) != 1 else ''}" if s.gates else ""
+            return "无活动目标。用 /goal <文本> 设置一个。"
+        turns = f"{s.turns_used}/{s.max_turns} 回合"
+        sub = f"，{len(s.subgoals)} 个子目标" if s.subgoals else ""
+        con = "，含契约" if self.has_contract() else ""
+        gat = f"，{len(s.gates)} 个门禁" if s.gates else ""
         meta = f"{turns}{sub}{con}{gat}"
         if s.status == "active":
             if s.waiting_on_session and _session_waiting(s.waiting_on_session):
-                return f"⏳ Goal (parked on {s.waiting_reason or f'session {s.waiting_on_session}'}, {meta}): {s.goal}"
+                return f"⏳ 目标（停放于 {s.waiting_reason or f'会话 {s.waiting_on_session}'}，{meta}）：{s.goal}"
             if s.waiting_on_pid and _pid_alive(s.waiting_on_pid):
-                return f"⏳ Goal (parked on {s.waiting_reason or f'pid {s.waiting_on_pid}'}, {meta}): {s.goal}"
+                return f"⏳ 目标（停放于 {s.waiting_reason or f'pid {s.waiting_on_pid}'}，{meta}）：{s.goal}"
             if s.waiting_until and time.time() < s.waiting_until:
                 remaining = int(s.waiting_until - time.time())
                 wr = s.waiting_reason or f"{remaining}s"
-                return f"⏳ Goal (parked {remaining}s — {wr}, {meta}): {s.goal}"
-            return f"⊙ Goal (active, {meta}): {s.goal}"
+                return f"⏳ 目标（停放 {remaining} 秒——{wr}，{meta}）：{s.goal}"
+            return f"⊙ 目标（进行中，{meta}）：{s.goal}"
         if s.status == "paused":
-            extra = f" — {s.paused_reason}" if s.paused_reason else ""
-            return f"⏸ Goal (paused, {meta}{extra}): {s.goal}"
+            extra = f"——{s.paused_reason}" if s.paused_reason else ""
+            return f"⏸ 目标（已暂停，{meta}{extra}）：{s.goal}"
         if s.status == "done":
-            return f"✓ Goal done ({meta}): {s.goal}"
-        return f"Goal ({s.status}, {meta}): {s.goal}"
+            return f"✓ 目标已完成（{meta}）：{s.goal}"
+        return f"目标（{s.status}，{meta}）：{s.goal}"
 
     # --- mutation -----------------------------------------------------
 
@@ -1124,12 +1124,12 @@ class GoalManager:
 
     def _require_goal(self) -> GoalState:
         if self._state is None or not self.has_goal():
-            raise RuntimeError("no active goal")
+            raise RuntimeError("无活动目标")
         return self._state
 
     def _require_active(self) -> GoalState:
         if self._state is None or self._state.status != "active":
-            raise RuntimeError("no active goal to park")
+            raise RuntimeError("无活动目标可供停放")
         return self._state
 
     def _pause_state(self, reason: str) -> None:
@@ -1144,7 +1144,7 @@ class GoalManager:
     def set(self, goal: str, *, max_turns: Optional[int] = None, contract: Optional[GoalContract] = None) -> GoalState:
         goal = (goal or "").strip()
         if not goal:
-            raise ValueError("goal text is empty")
+            raise ValueError("目标文本为空")
         self._state = GoalState(
             goal=goal, status="active", turns_used=0, created_at=time.time(), last_turn_at=0.0,
             max_turns=int(max_turns) if max_turns else self.default_max_turns,
@@ -1159,7 +1159,7 @@ class GoalManager:
         self._state.contract = contract or GoalContract()
         return self._save()
 
-    def pause(self, reason: str = "user-paused") -> Optional[GoalState]:
+    def pause(self, reason: str = "用户暂停") -> Optional[GoalState]:
         if not self._state:
             return None
         self._state.status = "paused"
@@ -1199,7 +1199,7 @@ class GoalManager:
         state = self._require_goal()
         text = (text or "").strip()
         if not text:
-            raise ValueError("subgoal text is empty")
+            raise ValueError("子目标文本为空")
         state.subgoals.append(text)
         self._save()
         return text
@@ -1208,7 +1208,7 @@ class GoalManager:
         items = getattr(self._require_goal(), attr)
         idx = int(index_1based) - 1
         if idx < 0 or idx >= len(items):
-            raise IndexError(f"index out of range (1..{len(items)})")
+            raise IndexError(f"索引超出范围（1..{len(items)}）")
         removed = items.pop(idx)
         self._save()
         return removed
@@ -1231,8 +1231,8 @@ class GoalManager:
     def render_subgoals(self) -> str:
         """Public helper for the /subgoal slash command."""
         if self._state is None:
-            return "(no active goal)"
-        return self._state.render_subgoals_block() or "(no subgoals — use /subgoal <text> to add criteria)"
+            return "（无活动目标）"
+        return self._state.render_subgoals_block() or "（无子目标——用 /subgoal <text> 添加验收标准）"
 
     # --- /goal gate quality gates ---------------------------------------
 
@@ -1241,7 +1241,7 @@ class GoalManager:
         state = self._require_goal()
         command = (command or "").strip()
         if not command:
-            raise ValueError("gate command is empty")
+            raise ValueError("门禁命令为空")
         gate = GoalGate(
             command=command,
             timeout_seconds=int(timeout_seconds) if timeout_seconds else DEFAULT_GATE_TIMEOUT_SECONDS,
@@ -1262,16 +1262,16 @@ class GoalManager:
     def render_gates(self) -> str:
         """Public helper for the /goal gate slash command."""
         if self._state is None:
-            return "(no active goal)"
+            return "（无活动目标）"
         if not self._state.gates:
-            return "(no quality gates — use /goal gate add <command> to require one)"
+            return "（无质量门禁——用 /goal gate add <command> 添加一个）"
         lines = []
         for i, g in enumerate(self._state.gates, start=1):
             status = ""
             if g.last_exit_code == 0:
-                status = " ✓ passing"
+                status = " ✓ 通过"
             elif g.last_exit_code is not None:
-                status = f" ✗ failing (exit {g.last_exit_code}, attempt {g.attempts}/{g.max_retries})"
+                status = f" ✗ 失败（退出码 {g.last_exit_code}，第 {g.attempts}/{g.max_retries} 次尝试）"
             lines.append(f"- {i}. $ {g.command}{status}")
         return "\n".join(lines)
 
@@ -1300,7 +1300,7 @@ class GoalManager:
 
             if gate.attempts > gate.max_retries:
                 return self._pause_decision(
-                    f"quality gate exhausted {gate.attempts - 1} retries: $ {gate.command}",
+                    f"质量门禁已用尽 {gate.attempts - 1} retries: $ {gate.command}",
                     "gate_failed", f"gate exhausted retries: $ {gate.command}",
                     f"⏸ Goal paused — quality gate still failing after "
                     f"{gate.max_retries} retries: $ {gate.command} "
@@ -1316,7 +1316,7 @@ class GoalManager:
             return _decision(
                 "active", True, prompt, "gate_failed",
                 f"gate failed (exit {exit_code}): $ {gate.command}",
-                f"✗ Quality gate failed ({state.turns_used}/{state.max_turns} turns, "
+                f"✗ 质量门禁失败（{state.turns_used}/{state.max_turns} turns, "
                 f"attempt {gate.attempts}/{gate.max_retries}): $ {gate.command}",
             )
 
@@ -1340,7 +1340,7 @@ class GoalManager:
         self._require_active()
         pid = int(pid)
         if pid <= 0:
-            raise ValueError("pid must be a positive integer")
+            raise ValueError("pid 必须为正整数")
         if not _pid_alive(pid):
             raise ValueError("pid is not alive on this host")
         return self._park(reason, waiting_on_pid=pid)
@@ -1351,7 +1351,7 @@ class GoalManager:
         self._require_active()
         session_id = str(session_id or "").strip()
         if not session_id:
-            raise ValueError("session_id must be a non-empty string")
+            raise ValueError("session_id 必须为非空字符串")
         return self._park(reason, waiting_on_session=session_id)
 
     def wait_for_seconds(self, seconds: int, reason: str = "", *, on_delegations: int = 0) -> GoalState:
@@ -1363,7 +1363,7 @@ class GoalManager:
         self._require_active()
         seconds = int(seconds)
         if seconds <= 0:
-            raise ValueError("seconds must be a positive integer")
+            raise ValueError("秒数必须为正整数")
         return self._park(reason, waiting_until=time.time() + seconds, waiting_on_delegations=max(0, int(on_delegations)))
 
     def stop_waiting(self) -> bool:
@@ -1415,7 +1415,7 @@ class GoalManager:
         else:
             tgt = f"{max(0, int(state.waiting_until - time.time()))}s remaining"
         reason = state.waiting_reason or tgt
-        return _decision("active", False, None, "waiting", reason, f"⏳ Goal parked — waiting on {tgt}: {reason}")
+        return _decision("active", False, None, "waiting", reason, f"⏳ 目标已停放— waiting on {tgt}: {reason}")
 
     def _apply_wait_directive(self, wait_directive: Dict[str, Any], reason: str, *, active_delegations: int = 0) -> Optional[Dict[str, Any]]:
         """Judge said WAIT: set the barrier and park. The counted turn stands (the judge ran) but no
@@ -1437,7 +1437,7 @@ class GoalManager:
         else:
             self.wait_for_seconds(int(wait_directive["seconds"]), reason=reason, on_delegations=active_delegations)
             tgt = f"{wait_directive['seconds']}s"
-        return _decision("active", False, None, "wait", reason, f"⏳ Goal parked (judge) — waiting on {tgt}: {reason}")
+        return _decision("active", False, None, "wait", reason, f"⏳ 目标已停放（评判器）— waiting on {tgt}: {reason}")
 
     def _budget_pause(self, state: GoalState, verdict: str, reason: str, note: str = "") -> Dict[str, Any]:
         return self._pause_decision(
@@ -1470,7 +1470,7 @@ class GoalManager:
         gate_decision = self._check_gates()
         if gate_decision is not None:
             if gate_decision.get("should_continue") and state.turns_used >= state.max_turns:
-                return self._budget_pause(state, "gate_failed", gate_decision.get("reason", ""), note=" (a quality gate is still failing)")
+                return self._budget_pause(state, "gate_failed", gate_decision.get("reason", ""), note=" （某质量门禁仍未通过）")
             return gate_decision
 
         verdict, reason, parse_failed, wait_directive, transport_failed = judge_goal(
@@ -1496,14 +1496,14 @@ class GoalManager:
         # of scope, needs user input). See #100954.
         if verdict == "blocked":
             return self._pause_decision(
-                f"judged unachievable: {reason}", "blocked", reason,
-                f"🚫 Goal judged unachievable — paused: {reason} Re-scope with /goal set, or override with /goal resume.",
+                f"被判定无法达成：{reason}", "blocked", reason,
+                f"🚫 目标被判定为无法达成——已暂停：{reason} 用 /goal set 重新界定范围，或用 /goal resume 强制继续。",
             )
 
         if verdict == "done":
             state.status = "done"
             self._save()
-            return _decision("done", False, None, "done", reason, f"✓ Goal achieved: {reason}")
+            return _decision("done", False, None, "done", reason, f"✓ 目标已达成：{reason}")
 
         # Persistent judge failures (API unreachable / unparseable output) auto-pause and point at the
         # goal_judge config so a broken judge can't burn the whole turn budget.
@@ -1529,7 +1529,7 @@ class GoalManager:
         self._save()
         return _decision(
             "active", True, self.next_continuation_prompt(), "continue", reason,
-            f"↻ Continuing toward goal ({state.turns_used}/{state.max_turns}): {reason}",
+            f"↻ 正朝着目标继续（{state.turns_used}/{state.max_turns}）：{reason}",
         )
 
     def next_continuation_prompt(self) -> Optional[str]:
@@ -1549,9 +1549,9 @@ class GoalManager:
     def render_contract(self) -> str:
         """Public helper for the /goal show + /goal draft slash commands."""
         if self._state is None:
-            return "(no active goal)"
+            return "（无活动目标）"
         return self._state.contract.render_block() if self._state.has_contract() else (
-            "(no completion contract — set one with /goal draft <objective> or inline field: value lines)")
+            "（无完成契约——用 /goal draft <目标> 或内联的 field: value 行来设置）")
 
 
 # ── Kanban worker goal loop ───────────────────────────────────────────
@@ -1670,7 +1670,7 @@ def run_kanban_goal_loop(
             # re-poking an impossible goal, and never let it land in done.
             # The judge ruled the goal cannot be satisfied at all — this is NOT done (#100954).
             _log(f"kanban goal loop: task {task_id} judged unachievable; blocking")
-            _block(f"Goal-mode judge ruled the goal unachievable: {reason}")
+            _block(f"目标模式：评判器判定目标无法达成：{reason}")
             return _result("blocked_unachievable", f"judge verdict blocked: {reason}")
 
         if verdict == "done":
@@ -1678,8 +1678,8 @@ def run_kanban_goal_loop(
                 # Already asked once to call kanban_complete — block for review rather than spin.
                 _log(f"kanban goal loop: task {task_id} judged done but worker won't finalize; blocking")
                 _block(
-                    f"Goal-mode worker's output looked complete but it never "
-                    f"called kanban_complete after a finalize nudge ({reason})."
+                    f"目标模式：worker 的输出看起来已完成，但在收尾提示后仍未 "
+                    f"调用 kanban_complete（{reason}）。"
                 )
                 return _result("blocked_budget", "judged done, never finalized")
             prompt = KANBAN_GOAL_FINALIZE_TEMPLATE.format(reason=_truncate(reason, 400))
@@ -1691,9 +1691,9 @@ def run_kanban_goal_loop(
         if turns_used >= max_turns:
             _log(f"kanban goal loop: task {task_id} exhausted {turns_used}/{max_turns} turns; blocking")
             _block(
-                f"Goal-mode worker exhausted its turn budget "
-                f"({turns_used}/{max_turns}) without completing the task. "
-                f"Last judge verdict: {_truncate(reason, 300)}"
+                f"目标模式：worker 已用尽回合预算 "
+                f"（{turns_used}/{max_turns}）但任务仍未完成。"
+                f"最后一次评判结论：{_truncate(reason, 300)}"
             )
             return _result("blocked_budget", "turn budget exhausted")
 

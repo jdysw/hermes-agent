@@ -37,7 +37,7 @@ def main(argv=None) -> int:
                                "prev_turn_said_waiting": bool(last_assistant and _WAITING.search(last_assistant.get("content") or ""))})
             elif c.startswith("[ASYNC DELEGATION"):
                 batch_notices += 1
-            elif c.startswith("[IMPORTANT: Background process"):
+            elif c.startswith(("[IMPORTANT: Background process", "[IMPORTANT: 后台进程")):
                 bgproc_notices += 1
     goal_state: Dict[str, Any] = {}
     try:

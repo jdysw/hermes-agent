@@ -78,7 +78,7 @@ class TestHintMessages:
         msg = busy_input_hint_cli("steer")
         assert "/busy interrupt" in msg
         assert "/busy queue" in msg
-        assert "steer" in msg.lower()
+        assert "steer" in msg.lower() or "注入" in msg
 
 
     def test_hints_are_not_empty(self):
@@ -143,7 +143,7 @@ class TestOpenclawResidueHint:
         # Archiving the directory breaks OpenClaw for users still running it —
         # the banner must flag that side effect.
         msg = openclaw_residue_hint_cli().lower()
-        assert "openclaw will stop working" in msg or "stop working" in msg
+        assert "openclaw will stop working" in msg or "停止工作" in msg
 
     def test_hint_not_empty(self):
         assert openclaw_residue_hint_cli().strip()

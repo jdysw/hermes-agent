@@ -76,7 +76,7 @@ def test_loop_bare_shows_status_when_none_set(server, session):
     sid, _, _ = session
     r = _call(server, "command.dispatch", name="loop", arg="", session_id=sid)
     assert r["result"]["type"] == "exec"
-    assert "No loop set" in r["result"]["output"]
+    assert "未设置循环" in r["result"]["output"]
 
 
 def test_loop_set_persists(server, session):
@@ -84,7 +84,7 @@ def test_loop_set_persists(server, session):
     r = _call(server, "command.dispatch", name="loop", arg="5m check the deploy", session_id=sid)
     result = r["result"]
     assert result["type"] == "exec"
-    assert "Loop set" in result["output"]
+    assert "循环已设置" in result["output"]
 
     from hermes_cli.loops import LoopManager
 
@@ -98,7 +98,7 @@ def test_loop_set_persists(server, session):
 def test_loop_proactive_alias_resolves(server, session):
     sid, _, _ = session
     r = _call(server, "command.dispatch", name="proactive", arg="5m ping", session_id=sid)
-    assert "Loop set" in r["result"]["output"]
+    assert "循环已设置" in r["result"]["output"]
 
 
 def test_loop_pause_resume_stop(server, session):
@@ -106,13 +106,13 @@ def test_loop_pause_resume_stop(server, session):
     _call(server, "command.dispatch", name="loop", arg="5m poll CI", session_id=sid)
 
     r = _call(server, "command.dispatch", name="loop", arg="pause", session_id=sid)
-    assert "paused" in r["result"]["output"].lower()
+    assert "已暂停" in r["result"]["output"]
 
     r = _call(server, "command.dispatch", name="loop", arg="resume", session_id=sid)
-    assert "resumed" in r["result"]["output"].lower()
+    assert "已恢复" in r["result"]["output"]
 
     r = _call(server, "command.dispatch", name="loop", arg="stop", session_id=sid)
-    assert "stopped" in r["result"]["output"].lower()
+    assert "已停止" in r["result"]["output"]
 
     from hermes_cli.loops import LoopManager
 

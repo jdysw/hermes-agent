@@ -43,10 +43,10 @@ _ROLLBACK_SKIP_LINES = (("skipped_user_edits", "gateway.rollback.kept_user_edits
 
 # /busy input modes -> (status-card behavior, set-confirmation behavior).
 _BUSY_MODE_BEHAVIOR = {
-    "queue": ("queues for next turn", "Messages will be queued for the next turn while Hermes is busy."),
-    "steer": ("steers into current run (after next tool call)",
-              "Messages will be steered into the current run (after the next tool call)."),
-    "interrupt": ("interrupts current run", "Messages will interrupt the current run while Hermes is busy."),
+    "queue": ("排队至下一回合", "当 Hermes 忙碌时，消息将排队至下一回合处理。"),
+    "steer": ("注入当前运行（在下一个工具调用之后）",
+              "消息将注入当前运行（在下一个工具调用之后）。"),
+    "interrupt": ("打断当前运行", "当 Hermes 忙碌时，消息将打断当前运行。"),
 }
 
 # /diff argument -> diff mode (unknown args leave the mode unchanged).
@@ -67,10 +67,10 @@ _FOOTER_STATE_BY_ARG = {**dict.fromkeys(("on", "enable", "true", "1"), True),
 _APPROVE_CHOICE_BY_ARG = {**dict.fromkeys(("always", "permanent", "permanently"), "always"),
                           **dict.fromkeys(("session", "ses"), "session")}
 
-_PLATFORM_USAGE = ("Usage: /platform <list|pause|resume> [name]\n"
-                   "  /platform list — show platform status\n"
-                   "  /platform pause <name> — stop retrying a failing platform\n"
-                   "  /platform resume <name> — re-queue a paused platform")
+_PLATFORM_USAGE = ("用法：/platform <list|pause|resume> [name]\n"
+                   "  /platform list — 显示平台状态\n"
+                   "  /platform pause <name> — 停止重试故障平台\n"
+                   "  /platform resume <name> — 将已暂停的平台重新入队")
 
 _WINDOWS_UPDATE_HELPER = """
 import os, subprocess, sys
@@ -321,18 +321,18 @@ class GatewaySlashCommandsMixin(
         policy = policy_for_source(self.config, source)
         platform = source.platform.value if source and source.platform else "?"
         chat_type = ((source.chat_type if source else "") or "dm").lower()
-        scope = "DM" if chat_type in {"dm", "direct", "private", ""} else "group/channel"
+        scope = "DM" if chat_type in {"dm", "direct", "private", ""} else "群聊/频道"
         user_id = (source.user_id if source else None) or "?"
-        head = f"**You** — {platform} ({scope})\nUser ID: `{user_id}`\n"
+        head = f"**你** — {platform}（{scope}）\n用户 ID：`{user_id}`\n"
         if not policy.enabled:
-            return head + "Tier: unrestricted (no admin list configured for this scope)\nSlash commands: all available"
+            return head + "层级：不受限（此范围未配置管理员名单）\n可用的 slash 命令：全部"
         if policy.is_admin(user_id):
-            return head + "Tier: **admin**\nSlash commands: all available"
+            return head + "层级：**管理员**\n可用的 slash 命令：全部"
         # Non-admin: floor first (mirrors slash_access._ALWAYS_ALLOWED_FOR_USERS), then operator
         # additions, deduped in order.
         runnable = list(dict.fromkeys(["help", "whoami"] + sorted(policy.user_allowed_commands)))
-        runnable_str = ", ".join(f"/{c}" for c in runnable) if runnable else "(none)"
-        return head + f"Tier: user\nSlash commands you can run: {runnable_str}"
+        runnable_str = "、".join(f"/{c}" for c in runnable) if runnable else "（无）"
+        return head + f"层级：普通用户\n可运行的 slash 命令：{runnable_str}"
 
     async def _handle_kanban_command(self, event: MessageEvent) -> str:
         """Handle /kanban — delegate to the shared kanban CLI (DB work in a thread pool). Allowed
@@ -487,39 +487,39 @@ class GatewaySlashCommandsMixin(
         target = parts[1].lower() if len(parts) > 1 else ""
         failed = getattr(self, "_failed_platforms", {}) or {}
         if action == "list":
-            connected = ", ".join(sorted(p.value for p in self.adapters)) or "(none)"
-            lines = ["**Gateway platforms**", f"Connected: {connected}"]
+            connected = "、".join(sorted(p.value for p in self.adapters)) or "（无）"
+            lines = ["**网关平台**", f"已连接：{connected}"]
             for p, info in failed.items():
                 if info.get("paused"):
                     reason = info.get("pause_reason") or "paused"
-                    lines.append(f"  · {p.value} — PAUSED ({reason}). Resume with `/platform resume {p.value}`.")
+                    lines.append(f"  · {p.value} — 已暂停（{reason}）。用 `/platform resume {p.value}` 恢复。")
                 else:
-                    lines.append(f"  · {p.value} — retrying (attempt {info.get('attempts', 0)})")
-            return "\n".join(lines + ([] if failed else ["Failed/paused: (none)"]))
+                    lines.append(f"  · {p.value} — 正在重试（第 {info.get('attempts', 0)} 次尝试）")
+            return "\n".join(lines + ([] if failed else ["失败/已暂停：（无）"]))
         if action not in {"pause", "resume"}:
             return _PLATFORM_USAGE
         if not target:
-            return f"Usage: /platform {action} <name>"
+            return f"用法：/platform {action} <name>"
         # Resolve platform name (case-insensitive, value match)
         platform = next((p for p in Platform.__members__.values() if p.value.lower() == target), None)
         if platform is None:
-            return f"Unknown platform: {target}"
+            return f"未知平台：{target}"
         name = platform.value
         queued = platform in failed
         paused = queued and bool(failed[platform].get("paused"))
         if action == "pause":
             if not queued:
-                return f"{name} is not in the retry queue (it's either connected or not enabled)."
+                return f"{name} 不在重试队列中（它要么已连接，要么未启用）。"
             if paused:
-                return f"{name} is already paused."
-            self._pause_failed_platform(platform, reason="paused via /platform pause")
-            return f"✓ {name} paused. Resume with `/platform resume {name}` or `hermes gateway restart` to reset."
+                return f"{name} 已经处于暂停状态。"
+            self._pause_failed_platform(platform, reason="通过 /platform pause 暂停")
+            return f"✓ 已暂停 {name}。用 `/platform resume {name}` 恢复，或用 `hermes gateway restart` 重置。"
         if not queued:
-            return f"{name} is not in the retry queue — nothing to resume."
+            return f"{name} 不在重试队列中——无需恢复。"
         if not paused:
-            return f"{name} is already retrying — no resume needed."
+            return f"{name} 已在重试中——无需恢复。"
         self._resume_paused_platform(platform)
-        return f"✓ {name} resumed — retrying on next watcher tick."
+        return f"✓ 已恢复 {name}——将在下一个监控周期重试。"
 
     async def _handle_restart_command(self, event: MessageEvent) -> Union[str, EphemeralReply]:
         """Handle /restart command - drain active work, then restart the gateway."""
@@ -618,7 +618,7 @@ class GatewaySlashCommandsMixin(
         chat_id = source.chat_id
         chat_name = source.chat_name or chat_id
         if source.platform is None:
-            return t("gateway.set_home.save_failed", error="Missing logical platform")
+            return t("gateway.set_home.save_failed", error="缺少逻辑平台")
         via_relay = getattr(source, "delivered_via_upstream_relay", False) is True
         if via_relay:
             adapter_for_source = getattr(self, "_intake_adapter_for", None)
@@ -628,7 +628,7 @@ class GatewaySlashCommandsMixin(
                     or not getattr(source, "user_id", None)
                     or not callable(fronts_platform) or not fronts_platform(source.platform)):
                 return t("gateway.set_home.save_failed",
-                         error="Relay does not authenticate this logical home target")
+                         error="Relay 未认证此逻辑 home 目标")
         thread_id = _home_thread_from_source(source)
         home = HomeChannel(
             platform=source.platform, chat_id=str(chat_id), name=chat_name, thread_id=thread_id,
@@ -770,7 +770,7 @@ class GatewaySlashCommandsMixin(
             from tools.working_diff import collect_working_diff
             result = await asyncio.to_thread(collect_working_diff, cwd, mode)
         if not result.get("success"):
-            return t("gateway.diff.failed", error=result.get("error", "Could not generate diff"))
+            return t("gateway.diff.failed", error=result.get("error", "无法生成差异"))
         return self._render_diff_result(result, stat_only)
 
     def _render_diff_result(self, result: dict, stat_only: bool) -> str:
@@ -785,8 +785,8 @@ class GatewaySlashCommandsMixin(
             out.append(f"```\n{stat}\n```")
         if untracked:
             shown = "\n".join(f"+ {rel}" for rel in untracked[:15])
-            more = f"\n... and {len(untracked) - 15} more" if len(untracked) > 15 else ""
-            out.append(f"**Untracked:**\n```\n{shown}{more}\n```")
+            more = f"\n…… 还有 {len(untracked) - 15} 个" if len(untracked) > 15 else ""
+            out.append(f"**未跟踪文件：**\n```\n{shown}{more}\n```")
         if not stat_only and diff:
             out.append(self._fenced_truncated_diff(diff))
         return "\n\n".join(out)
@@ -803,7 +803,7 @@ class GatewaySlashCommandsMixin(
             truncated = True
         note = ""
         if truncated:
-            note = f"\n... (truncated — {len(diff_lines)} lines total; use /diff --stat for a summary)"
+            note = f"\n……（已截断——共 {len(diff_lines)} 行；用 /diff --stat 查看摘要）"
         return f"```diff\n{diff}{note}\n```"
 
     def _track_background_task(self, coro) -> None:
@@ -891,7 +891,7 @@ class GatewaySlashCommandsMixin(
             wa.MEMORY, event.get_command_args().strip().split(), memory_store=load_on_disk_store(),
             set_mode_fn=self._write_approval_setter("memory", event))
         return out if out is not None else (
-            "Unknown /memory subcommand. Use: pending, approve <id>, reject <id>, approval <on|off>."
+            "未知的 /memory 子命令。可用：pending、approve <id>、reject <id>、approval <on|off>。"
         )
 
     async def _handle_skills_command(self, event: MessageEvent) -> str:
@@ -904,23 +904,23 @@ class GatewaySlashCommandsMixin(
         sub = args[0].lower() if args else ""
         gate_off = not wa.write_approval_enabled(wa.SKILLS) and sub not in {"approval", "mode"}
         if gate_off and wa.pending_count(wa.SKILLS) == 0:
-            return ("Skill write approval is off (skills.write_approval). "
-                    "Enable it with /skills approval on, then review staged "
-                    "writes here with /skills pending.")
+            return ("技能写入审批已关闭（skills.write_approval）。"
+                    "用 /skills approval on 启用后，"
+                    "再在这里用 /skills pending 审查暂存的写入。")
         out = handle_pending_subcommand(
             wa.SKILLS, args, set_mode_fn=self._write_approval_setter("skills", event))
         if out is None:
-            return ("Unknown /skills subcommand on this platform. Use: pending, "
-                    "approve <id>, reject <id>, diff <id>, approval <on|off>. "
-                    "(Search/install are CLI-only.)")
+            return ("此平台上未知的 /skills 子命令。可用：pending、"
+                    "approve <id>、reject <id>、diff <id>、approval <on|off>。"
+                    "（搜索/安装仅限 CLI。）")
 
         # Chat bubbles can't hold a full skill diff — truncate and point at the pending JSON file
         # (NOT `hermes skills diff <name>`, which diffs a bundled skill against its stock version).
         if sub == "diff" and len(out) > 3000:
             pending_id = args[1] if len(args) > 1 else "<id>"
             out = (out[:3000]
-                   + "\n… (truncated — full diff in "
-                     f"~/.hermes/pending/skills/{pending_id}.json)")
+                   + "\n……（已截断——完整 diff 见 "
+                     f"~/.hermes/pending/skills/{pending_id}.json）")
         return out
 
     async def _handle_approvals_command(self, event: MessageEvent) -> str:
@@ -933,7 +933,7 @@ class GatewaySlashCommandsMixin(
         # Unconfigured policies remain unrestricted.
         policy = policy_for_source(self.config, event.source)
         if requested and not policy.is_admin(event.source.user_id):
-            return "Only gateway admins can change the persistent approval mode."
+            return "只有网关管理员才能更改持久审批模式。"
         # Approval checks load config dynamically; do not evict the cached agent or alter its
         # system prompt/tool schema (prompt-cache prefix is sacred).
         return run_approval_mode_command(requested).message
@@ -983,16 +983,16 @@ class GatewaySlashCommandsMixin(
             mode = self._effective_busy_input_mode(event.source)
             behavior = _BUSY_MODE_BEHAVIOR.get(mode, _BUSY_MODE_BEHAVIOR["interrupt"])[0]
             return EphemeralReply(
-                f"**Busy input mode: `{mode}`\nMessages while busy: _{behavior}_\n"
-                f"Change with `/busy queue`, `/busy steer`, or `/busy interrupt`.")
+                f"**忙碌输入模式：`{mode}`\n忙碌时的消息处理：_{behavior}_\n"
+                f"可通过 `/busy queue`、`/busy steer` 或 `/busy interrupt` 修改。")
         if arg not in _BUSY_MODE_BEHAVIOR:
             return EphemeralReply(
-                f"Unknown mode `{arg}`. Use `/busy queue`, `/busy steer`, or `/busy interrupt`.")
+                f"未知模式 `{arg}`。请使用 `/busy queue`、`/busy steer` 或 `/busy interrupt`。")
 
         # Persist before mutate
         from cli import save_config_value
         if not save_config_value("display.busy_input_mode", arg):
-            return EphemeralReply("Busy input mode could not be saved to config. Mode unchanged.")
+            return EphemeralReply("忙碌输入模式无法保存到配置。模式未更改。")
         profile_name = self._busy_profile_name_for_source(event.source)
         if profile_name:
             from gateway.run import _load_gateway_config
@@ -1007,7 +1007,7 @@ class GatewaySlashCommandsMixin(
         if adapter is not None:
             adapter._busy_text_mode = self._effective_busy_text_mode(event.source)
         return EphemeralReply(
-            f"Busy input mode set to **`{arg}`** (saved).\n_{_BUSY_MODE_BEHAVIOR[arg][1]}_")
+            f"忙碌输入模式已设置为 **`{arg}`**（已保存）。\n_{_BUSY_MODE_BEHAVIOR[arg][1]}_")
 
     async def _handle_footer_command(self, event: MessageEvent) -> str:
         """Handle /footer command — toggle the runtime-metadata footer."""
@@ -1154,15 +1154,15 @@ class GatewaySlashCommandsMixin(
             return reply.text
         bundles = reply.data["bundles"]
         if not bundles:
-            return ("No skill bundles installed.\nCreate one on the host with:\n"
+            return ("未安装任何技能包。\n在主机上用以下命令创建：\n"
                     "  `hermes bundles create <name> --skill <s1> --skill <s2>`\n"
-                    f"Directory: `{reply.data['dir']}`")
-        lines = [f"**Skill Bundles** ({len(bundles)} installed):", ""]
+                    f"目录：`{reply.data['dir']}`")
+        lines = [f"**技能包**（已安装 {len(bundles)} 个）：", ""]
         for info in bundles:
             skills = info.get("skills", [])
-            desc = info.get("description") or f"Load {len(skills)} skills"
-            lines += [f"• `/{info['slug']}` — {desc} _({len(skills)} skills)_"] + [f"    · {s}" for s in skills]
-        return "\n".join(lines + ["", "Invoke a bundle with `/<slug>` to load all its skills."])
+            desc = info.get("description") or f"加载 {len(skills)} 个技能"
+            lines += [f"• `/{info['slug']}` — {desc} _（{len(skills)} 个技能）_"] + [f"    · {s}" for s in skills]
+        return "\n".join(lines + ["", "用 `/<slug>` 调用技能包以加载其全部技能。"])
 
     def _blocking_approval_or_stale(self, event: MessageEvent, stale_key: str, none_key: str):
         """``(session_key, None)`` when an agent thread is blocked on approval, else the reply to send.
@@ -1270,7 +1270,7 @@ class GatewaySlashCommandsMixin(
             except Exception:
                 return t("gateway.update.platform_not_messaging")
         if is_managed():
-            return f"✗ {format_managed_message('update Hermes Agent')}"
+            return f"✗ {format_managed_message('更新 Hermes Agent')}"
         if not (Path(__file__).parent.parent.resolve() / '.git').exists():
             return t("gateway.update.not_git_repo")
         hermes_cmd = _resolve_hermes_bin()

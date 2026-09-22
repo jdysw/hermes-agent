@@ -212,8 +212,8 @@ async def test_auto_thread_failure_skips_agent_and_notifies_user(adapter, monkey
     # inline reply.
     channel.send.assert_awaited_once()
     sent_text = channel.send.await_args.args[0]
-    assert "could not create" in sent_text.lower()
-    assert "thread" in sent_text.lower()
+    assert "无法为这条消息创建" in sent_text
+    assert "话题" in sent_text
 
 
 # ── config.py bridging ───────────────────────────────────────────────

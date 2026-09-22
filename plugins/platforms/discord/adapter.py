@@ -3722,7 +3722,7 @@ class DiscordAdapter(DiscordMediaMixin, BasePlatformAdapter):
             ch = self._client.get_channel(text_ch_id)
             if ch:
                 try:
-                    await ch.send("Left voice channel (inactivity timeout).")
+                    await ch.send("已离开语音频道（空闲超时）。")
                 except Exception:
                     pass
 
@@ -4561,8 +4561,7 @@ class DiscordAdapter(DiscordMediaMixin, BasePlatformAdapter):
                 entry = self._skill_lookup.get(name)
                 if not entry:
                     await interaction.response.send_message(
-                        f"Unknown skill: `{name}`. Start typing for "
-                        f"autocomplete suggestions.",
+                        f"未知技能：`{name}`。开始输入可查看自动补全建议。",
                         ephemeral=True,
                     )
                     return
@@ -4682,13 +4681,13 @@ class DiscordAdapter(DiscordMediaMixin, BasePlatformAdapter):
         if not result.get("success"):
             error = result.get("error", "unknown error")
             if deferred_response:
-                await interaction.followup.send(f"Failed to create thread: {error}", ephemeral=True)
+                await interaction.followup.send(f"创建话题失败：{error}", ephemeral=True)
             return
         thread_id = result.get("thread_id")
         thread_name = result.get("thread_name") or name
         link = f"<#{thread_id}>" if thread_id else f"**{thread_name}**"
         if deferred_response:
-            await interaction.followup.send(f"Created thread {link}", ephemeral=True)
+            await interaction.followup.send(f"已创建话题 {link}", ephemeral=True)
         # Track thread participation so follow-ups don't require @mention
         if thread_id:
             self._threads.mark(thread_id)
@@ -5311,7 +5310,7 @@ class DiscordAdapter(DiscordMediaMixin, BasePlatformAdapter):
                 last_direct_error = direct_error
                 try:
                     seed_msg = await message.channel.send(
-                        f"\U0001f9f5 Thread created by Hermes: **{thread_name}**"
+                        f"🧵 Hermes 创建了话题：**{thread_name}**"
                     )
                     thread = await seed_msg.create_thread(name=thread_name, auto_archive_duration=1440, reason=reason)
                     return self._stamp_auto_thread_name(thread, thread_name)
@@ -5415,7 +5414,7 @@ class DiscordAdapter(DiscordMediaMixin, BasePlatformAdapter):
             send = getattr(parent, "send", None)
             if send is None:
                 return None
-            seed_msg = await send(f"\U0001f9f5 Hermes handoff: **{thread_name}**")
+            seed_msg = await send(f"🧵 Hermes 移交：**{thread_name}**")
             thread = await seed_msg.create_thread(
                 name=thread_name, auto_archive_duration=1440, reason=reason,
             )
@@ -5997,9 +5996,9 @@ class DiscordAdapter(DiscordMediaMixin, BasePlatformAdapter):
                         # recovers, and skip agent invocation for this message. See #20243.
                         await message.channel.send(
                             self.warning_text(
-                                "⚠️ Hermes could not create a Discord thread for "
-                                "this message, so the request was not processed. Please retry.",
-                                "The request was not processed. Please retry.")
+                                "⚠️ Hermes 无法为这条消息创建 Discord "
+                                "话题，因此该请求未被处理。请重试。",
+                                "该请求未被处理。请重试。")
                         )
                     except Exception as notify_error:
                         logger.warning(
@@ -6578,7 +6577,7 @@ def _define_discord_view_classes() -> None:
             if not await self._gate(interaction, resolved_msg=None, unauth_msg=_UNAUTHORIZED):
                 return
             if not self._pending_expensive_model:
-                await interaction.response.send_message("Model selection expired.", ephemeral=True)
+                await interaction.response.send_message("模型选择已过期。", ephemeral=True)
                 return
             await self._switch_selected_model(interaction, self._pending_expensive_model)
 

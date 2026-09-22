@@ -205,7 +205,7 @@ class TestWatchUpdateProgress:
         # Should have sent at least the output and a success message
         assert mock_adapter.send.call_count >= 1
         all_sent = " ".join(str(c) for c in mock_adapter.send.call_args_list)
-        assert "update finished" in all_sent.lower()
+        assert "更新完成" in all_sent
 
     @pytest.mark.asyncio
     async def test_detects_and_forwards_prompt(self, tmp_path):

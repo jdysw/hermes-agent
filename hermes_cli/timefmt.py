@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import math
 import time as _time
+import unicodedata
 from datetime import datetime
 from typing import Any, Optional
 
@@ -56,3 +57,26 @@ def relative_time(ts, *, session_id: Optional[str] = None) -> str:
     if delta < 604800:
         return f"{int(delta / 86400)}d ago"
     return datetime.fromtimestamp(ts).strftime("%Y-%m-%d")
+
+
+def display_width(text: str) -> int:
+    """终端显示宽度：CJK/全角字符占 2 列，其余占 1 列。
+
+    ``f"{x:<10}"`` 按字符数补齐，而一个汉字占 2 个终端格 —— 中文表格直接用
+    字符数补齐必然错位，所以渲染中文列的代码统一走这里。
+    """
+    return sum(2 if unicodedata.east_asian_width(ch) in ("W", "F") else 1 for ch in text)
+
+
+def pad_display(text: str, width: int, align: str = "left") -> str:
+    """按显示宽度把 ``text`` 补齐到 ``width`` 列（一个汉字算 2 列）。
+
+    ``align`` 取 ``left``（默认）/ ``right`` / ``center``。
+    """
+    fill = " " * max(0, width - display_width(text))
+    if align == "right":
+        return fill + text
+    if align == "center":
+        half = len(fill) // 2
+        return fill[:half] + text + fill[half:]
+    return text + fill

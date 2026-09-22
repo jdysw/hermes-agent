@@ -82,8 +82,8 @@ _CONTEXT_OVERFLOW_ERROR_PHRASES = (
 )
 
 _UNEXPECTED_SILENCE_REPLY = (
-    "⚠️ The model returned only a silence marker for a message that needed a reply. "
-    "Try again or rephrase."
+    "⚠️ 对于一条需要回复的消息，模型只返回了静默标记。"
+    "请重试或换个说法。"
 )
 
 
@@ -571,8 +571,8 @@ class GatewayTurnMixin:
                 _loaded_skill, _skill_dir, _display_name = _loaded
                 _part = _build_skill_message(
                     _loaded_skill, _skill_dir,
-                    f'[IMPORTANT: The "{_display_name}" skill is auto-loaded. '
-                    f"Follow its instructions for this session.]",
+                    f'[IMPORTANT: "{_display_name}" 技能已自动加载。'
+                    f"请在本会话中遵循它的指引。]",
                 )
                 if _part:
                     _combined_parts.append(_part)
@@ -1191,9 +1191,9 @@ class GatewayTurnMixin:
                 logger.warning("Session hygiene compression aborted: %s", _err)
                 await self._hmwa_hygiene_notify(
                     source, attempt.meta,
-                    "⚠️ Shortening the conversation history failed, so I kept everything as-is. "
-                    "Run /compress to try again or /new to start fresh. If this keeps happening, "
-                    "run `hermes doctor` on the host.",
+                    "⚠️ 压缩对话历史失败，因此保持了原样。"
+                    "可运行 /compress 重试，或用 /new 开启新对话。若反复出现，"
+                    "请在主机上运行 `hermes doctor`。",
                     "compression-failure warning",
                 )
         # Configured aux model failed, recovered on the main model: only the user can fix that config.
@@ -1201,10 +1201,10 @@ class GatewayTurnMixin:
             _aux_model = getattr(_comp, "_last_aux_model_failure_model", "")
             _aux_err = getattr(_comp, "_last_aux_model_failure_error", None) or "unknown error"
             await self._hmwa_hygiene_notify(
-                source, attempt.meta, f"ℹ️ Configured compression model `{_aux_model}` "
-                f"failed ({_aux_err}). Recovered using your main "
-                "model — context is intact — but you may want to "
-                "check `auxiliary.compression.model` in config.yaml.",
+                source, attempt.meta, f"ℹ️ 配置的压缩模型 `{_aux_model}` "
+                f"调用失败（{_aux_err}）。已回退使用你的主模型 —— "
+                "上下文完好 —— 但建议检查 config.yaml 中的 "
+                "`auxiliary.compression.model`。",
                 "aux-model-fallback notice",
             )
 
@@ -1781,8 +1781,8 @@ class GatewayTurnMixin:
                     self._sync_telegram_topic_binding, source, session_entry, reason="compression-exhausted-reset",
                 )
             response = (response or "") + (
-                "\n\n🔄 Session auto-reset — the conversation exceeded the maximum context size and "
-                "could not be compressed further. Your next message will start a fresh session."
+                "\n\n🔄 会话已自动重置 —— 对话超出最大上下文长度，且"
+                "已无法进一步压缩。你的下一条消息将开启全新会话。"
             )
         return response, session_entry
 
@@ -1997,18 +1997,18 @@ class GatewayTurnMixin:
                 _err_json = {}
             _resets_in = _err_json.get("resets_in_seconds")
             if _err_json.get("type") != "usage_limit_reached":
-                status_hint = " You are being rate-limited. Please wait a moment and try again."
+                status_hint = " 你正被限流。请稍候片刻再试。"
             elif _resets_in and _resets_in > 0:
                 import math
-                status_hint = f" Your plan's usage limit has been reached. It resets in ~{math.ceil(_resets_in / 3600)}h."
+                status_hint = f" 你的套餐用量已达上限，约 {math.ceil(_resets_in / 3600)} 小时后重置。"
             else:
-                status_hint = " Your plan's usage limit has been reached. Please wait until it resets."
+                status_hint = " 你的套餐用量已达上限，请等待重置。"
         elif status_code == 400:
-            status_hint = " The AI model service rejected the request."
+            status_hint = " AI 模型服务拒绝了该请求。"
         return self._hmwa_add_failed_turn_notice(
-            f"⚠️ Something went wrong and I couldn't finish this reply.{status_hint}\n"
-            "Use /retry to try again, or /new to start a fresh conversation. "
-            "Technical details are in the gateway log (`hermes logs`).",
+            f"⚠️ 出了点问题，这条回复没能完成。{status_hint}\n"
+            "可用 /retry 重试，或用 /new 开启新对话。"
+            "技术细节见网关日志（`hermes logs`）。",
             PARTIAL_FAILED_TURN_NOTICE,
         )
 
@@ -2081,9 +2081,9 @@ class GatewayTurnMixin:
         except TranscriptReadError:
             self._clear_session_env(_session_env_tokens)
             return (
-                "⚠️ This session's history is temporarily unavailable, so this message was not "
-                "processed. Ask the operator to inspect state.db, then resend after it is healthy. "
-                "Use /reset only if you intentionally want to start a new conversation."
+                "⚠️ 本会话的历史记录暂时不可用，因此这条消息未被"
+                "处理。请让运维者检查 state.db，待其恢复正常后重新发送。 "
+                "只有在你确实想开启新对话时才使用 /reset。"
             ), _session_env_tokens
 
         await self._hmwa_first_contact_notes(source, history, turn_sidecar_notes)
@@ -2298,17 +2298,17 @@ class GatewayTurnMixin:
         resolved = _resolve_gateway_model_context()
         context_length = resolved.context_length
         ctx_source = {
-            "config": "config",
-            "default": "default — set model.context_length in config to override",
-        }.get(resolved.context_source, "detected")
+            "config": "配置",
+            "default": "默认值 —— 在 config.yaml 里设置 model.context_length 可覆盖",
+        }.get(resolved.context_source, "自动检测")
         ctx_display = (
             f"{context_length / 1_000_000:.1f}M" if context_length >= 1_000_000
             else f"{context_length // 1_000}K" if context_length >= 1_000 else str(context_length)
         )
         lines = [
-            f"◆ Model: `{resolved.model}`",
-            f"◆ Provider: {resolved.provider or 'openrouter'}",
-            f"◆ Context: {ctx_display} tokens ({ctx_source})",
+            f"◆ 模型：`{resolved.model}`",
+            f"◆ 提供方：{resolved.provider or 'openrouter'}",
+            f"◆ 上下文：{ctx_display} token（{ctx_source}）",
         ]
         if (resolved.provider or "") == "moa":
             # The preset name hides who pays: the aggregator runs every tool-loop step (#112359).
@@ -2319,7 +2319,7 @@ class GatewayTurnMixin:
                 lines.append(f"◆ Acting model (billed for the run): {agg.get('provider')}:{agg.get('model')}")
         base_url = resolved.base_url
         if base_url and base_url_hostname(base_url) in ("localhost", "127.0.0.1", "0.0.0.0"):
-            lines.append(f"◆ Endpoint: {base_url}")
+            lines.append(f"◆ 端点：{base_url}")
         return "\n".join(lines)
 
     async def _run_background_task(
@@ -2383,8 +2383,8 @@ class GatewayTurnMixin:
             if not runtime_kwargs.get("api_key"):
                 await adapter.send(
                     source.chat_id,
-                    "❌ The background task couldn't start because no AI model sign-in is "
-                    "configured. Use /login, or run `hermes setup` on the host.",
+                    "❌ 后台任务无法启动，因为尚未配置 AI 模型登录。"
+                    "请使用 /login，或在主机上运行 `hermes setup`。",
                     metadata=_thread_metadata,
                 )
                 return
@@ -2454,7 +2454,7 @@ class GatewayTurnMixin:
                 response = repair_explicit_computer_use_media_paths(response, result.get("messages", []))
 
             preview = prompt[:60] + ("..." if len(prompt) > 60 else "")
-            header = f'✅ Background task complete\nPrompt: "{preview}"\n\n'
+            header = f'✅ 后台任务已完成\n提示词: "{preview}"\n\n'
             images, media_files, text_content = [], [], ""
             if response:
                 media_files, response = adapter.extract_media(response)
@@ -2464,7 +2464,7 @@ class GatewayTurnMixin:
                 await adapter.send(chat_id=source.chat_id, content=header + text_content, metadata=_thread_metadata)
             elif not images and not media_files:
                 await adapter.send(
-                    chat_id=source.chat_id, content=header + "(No response generated)", metadata=_thread_metadata,
+                    chat_id=source.chat_id, content=header + "（未生成回复）", metadata=_thread_metadata,
                 )
             for image_url, alt_text in (images or []):
                 with suppress(Exception):
@@ -2497,8 +2497,8 @@ class GatewayTurnMixin:
             with suppress(Exception):
                 await adapter.emit_warning(
                     source.chat_id,
-                    (f"❌ Your background task \"{_bg_prompt_preview(prompt)}\" failed before finishing. "
-                     "Send /bg again to retry, or /agents to see what is still running."),
+                    (f"❌ 你的后台任务「{_bg_prompt_preview(prompt)}」在完成前失败了。"
+                     "再次发送 /bg 重试，或用 /agents 查看仍在运行的任务。"),
                     metadata=_thread_metadata, logical_platform=source.platform,
                 )
 
@@ -2591,11 +2591,11 @@ class GatewayTurnMixin:
                 f"{label} servers: {', '.join(sorted(names))}"
                 for label, _key, names in (changes[1], changes[2], changes[0]) if names
             ]
-            tool_summary = f"{len(new_tools)} MCP tool(s) now available" if new_tools else "No MCP tools available"
+            tool_summary = f"当前可用 {len(new_tools)} 个 MCP 工具" if new_tools else "当前没有可用的 MCP 工具"
             change_detail = ". ".join(change_parts) + ". " if change_parts else ""
             reload_msg = {
                 "role": "user",
-                "content": f"[IMPORTANT: MCP servers have been reloaded. {change_detail}{tool_summary}. The tool list for this conversation has been updated accordingly.]",
+                "content": f"[IMPORTANT: MCP 服务器已重新加载。{change_detail}{tool_summary}。本对话的工具列表已相应更新。]",
             }
             with suppress(Exception):  # Best-effort; don't fail the reload over a transcript write
                 session_entry = await self.async_session_store.get_or_create_session(event.source)
@@ -2953,7 +2953,7 @@ class GatewayTurnMixin:
                 )
             except Exception as _phrase_err:
                 logger.debug("generic status phrase selection failed: %s", _phrase_err)
-                return "still on it" if kind in {"heartbeat", "waiting", "long_running", "status"} else "one sec"
+                return "还在处理" if kind in {"heartbeat", "waiting", "long_running", "status"} else "稍等"
 
         # Webhooks can't edit messages, so tool progress / log mode are off there.
         is_webhook = source.platform == Platform.WEBHOOK
@@ -4147,7 +4147,7 @@ class GatewayTurnMixin:
             _heartbeat_text = (
                 disp._generic_status_phrase("status")
                 if _long_running_mode == "generic"
-                else f"⏳ Working — {_elapsed_mins} min{_status_detail}"
+                else f"⏳ 工作中 —— 已进行 {_elapsed_mins} 分钟{_status_detail}"
             )
             try:
                 _notify_res = None

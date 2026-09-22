@@ -100,6 +100,27 @@ _TELEGRAM_NOISY_STATUS_RE = re.compile(
     r"|stream\s+(?:drop|drop\s+mid\s+tool-call).+retry\s+\d"
     r"|stale\s+connections\s+from\s+a\s+previous\s+provider\s+issue"
     rf"|{re.escape(COMPACTION_DONE_STATUS)}"
+    # ── 汉化后的等价模式：源码文案已中文化，抑制规则必须同步，否则瞬时噪声会漏进聊天 ──
+    r"|正在压缩上下文"
+    r"|压缩摘要失败"
+    r"|跳过并发压缩"
+    r"|并发压缩"
+    r"|自动把本会话阈值下调"
+    r"|阈值自动下调"
+    r"|所配置的(?:辅助)?压缩模型"
+    r"|所配置的辅助压缩提供方"
+    r"|未配置辅助\s*LLM\s*提供方"
+    r"|回退的上下文标记"
+    r"|预检压缩"
+    r"|API\s*调用前压缩"
+    r"|空闲\s*[\d.]+\s*s?\s*后恢复"
+    r"|上下文过大（约"
+    r"|上下文已缩减至"
+    r"|已压缩\s*[\d,~]+\s*(?:→|->)\s*[\d,~]+"
+    r"|会话已压缩\s*\d+\s*次"
+    r"|已达最大重试次数"
+    r"|失效连接"
+    r"|秒后重试"
     r")",
     re.IGNORECASE | re.DOTALL)
 
@@ -198,8 +219,8 @@ def _hygiene_compression_timeout_message(
     model config, so the copy names /compress, /new and `hermes doctor`, never a config key or the
     raw second counts (those stay in the gateway log)."""
     lead = (
-        "⚠️ Shortening the conversation history took too long, so I skipped it and kept "
-        "everything as-is. Run /compress to try again or /new to start fresh.")
+        "⚠️ 压缩对话历史耗时过长，已跳过并保持原样。"
+        "可运行 /compress 重试，或用 /new 开启新对话。")
     if total_exhausted:
         return lead
     return lead + " If this keeps happening, run `hermes doctor` on the host."
@@ -389,7 +410,7 @@ _GATEWAY_AUTH_ERROR_RE = re.compile(
     re.IGNORECASE)
 
 _GATEWAY_RATE_LIMIT_RE = re.compile(
-    r"(rate\s+limit|rate-limited|\b429\b|quota|usage\s+limit)", re.IGNORECASE)
+    r"(rate\s+limit|rate-limited|\b429\b|quota|usage\s+limit|被限流|限流)", re.IGNORECASE)
 
 # Connection-failure markers: the first 8 also anchor the provider-failure envelope shape below.
 _CONNECTION_ERROR_MARKERS = (
@@ -594,7 +615,7 @@ def _format_exec_approval_fallback(
     from gateway.platforms.base_exec_approval import (
         EA_HEADER_TEXT, EA_REASON_LABEL_TEXT, approval_timeout_seconds, format_approval_deadline_line)
     cmd_preview = command[:200] + "..." if len(command) > 200 else command
-    heading = ("⚠️ **Smart DENY — owner override for one operation:**" if smart_denied
+    heading = ("⚠️ **智能拒绝 — owner override for one operation:**" if smart_denied
                else f"⚠️ **{EA_HEADER_TEXT}**")
 
     choices = [f"Reply `{command_prefix}approve` to run it once"]
@@ -620,26 +641,24 @@ def _format_exec_approval_fallback(
 # wording for, and a cause-free SDK ``APIConnectionError: Connection error.`` supports neither
 # diagnosis, so the catch-all names the failure without asserting a cause.
 _PROVIDER_ERROR_REPLIES = (
-    (_GATEWAY_RATE_LIMIT_RE, "⏱️ The AI model service is rate-limiting requests. Wait a moment, then use /retry."),
-    (_GATEWAY_AUTH_ERROR_RE, "⚠️ Sign-in to the AI model service failed. Use /login to sign in again, "
-                             "or ask whoever runs this bot to run `hermes doctor` on the host."),
-    (_GATEWAY_PROVIDER_POLICY_RE, "⚠️ The AI model service rejected this request. Try rephrasing your "
-                                  "message, or use /model to switch models."),
-    (_GATEWAY_CONNECTION_INTERRUPTED_RE, "⚠️ The connection to the AI model service was interrupted mid-request — "
-                                         "usually transient. Use /retry to try again; if it keeps happening, run "
-                                         "`hermes doctor` on the host."),
-    (_GATEWAY_ENDPOINT_UNREACHABLE_RE, "⚠️ The AI model service isn't reachable right now — the configured model "
-                                       "endpoint is not running or is unreachable. Wait a moment and use /retry; "
-                                       "if it persists, run `hermes doctor` on the host."),
-    (_GATEWAY_CONNECTION_ERROR_RE, "⚠️ Hermes could not reach the AI model service (no further detail from the "
-                                   "SDK). Use /retry to try again; if it persists, run `hermes doctor` on the host."))
+    (_GATEWAY_RATE_LIMIT_RE, "⏱️ AI 模型服务正在限流。请稍候片刻，再用 /retry 重试。"),
+    (_GATEWAY_AUTH_ERROR_RE, "⚠️ AI 模型服务登录失败。请用 /login 重新登录，"
+                             "或请本机器人的运维者运行 `hermes doctor`。"),
+    (_GATEWAY_PROVIDER_POLICY_RE, "⚠️ AI 模型服务拒绝了该请求。请换个说法重试，"
+                                  "或用 /model 切换模型。"),
+    (_GATEWAY_CONNECTION_INTERRUPTED_RE, "⚠️ 与 AI 模型服务的连接在请求中途中断 —— 通常是暂时性的。"
+                                         "可用 /retry 重试；若反复出现，请在主机上运行 `hermes doctor`。"),
+    (_GATEWAY_ENDPOINT_UNREACHABLE_RE, "⚠️ 当前无法连接 AI 模型服务 —— 配置的模型端点未运行或不可达。"
+                                       "请稍候后用 /retry 重试；若持续如此，请在主机上运行 `hermes doctor`。"),
+    (_GATEWAY_CONNECTION_ERROR_RE, "⚠️ Hermes 无法连接 AI 模型服务（SDK 未提供更多细节）。"
+                                   "请用 /retry 重试；若持续如此，请在主机上运行 `hermes doctor`。"))
 
 
 # Shared by the failed-turn normalizer and ``run_turn._hmwa_agent_error_reply``; canonical
 # commands (/compress, /new) — the /compact and /reset aliases are absent from /help.
 _CONTEXT_OVERFLOW_REPLY = (
-    "⚠️ This conversation has grown too long for me to read all at once. "
-    "Use /compress to shorten the history, or /new to start a fresh conversation.")
+    "⚠️ 这段对话已经太长，我无法一次读完。"
+    "请使用 /compress 压缩历史，或用 /new 开启新对话。")
 
 
 def _rate_limit_reply(text: str) -> str:
@@ -660,15 +679,19 @@ def _gateway_provider_error_reply(text: str) -> str:
         if pattern.search(text):
             return _rate_limit_reply(text) if pattern is _GATEWAY_RATE_LIMIT_RE else reply
     return (
-        "⚠️ The AI model service kept failing. Use /retry to try again, or /model to switch "
-        "models. Details are in the gateway log (`hermes logs`).")
+        "⚠️ AI 模型服务持续失败。可用 /retry 重试，或用 /model 切换模型。"
+        "详情见网关日志（`hermes logs`）。")
 
 
 # Provider/API failure envelope preambles (not ordinary assistant prose), anchored at line start.
 _PROVIDER_ERROR_MARKERS = (
     r"api\s+(?:call\s+)?failed", r"provider\s+authentication\s+failed", r"non-retryable\s+error",
     r"rate\s+limited\s+after\s+\d+\s+retries", r"error\s+code\s*:", r"http\s*\d{3}\b",
-    r"incorrect\s+api\s+key", r"invalid\s+api\s+key")
+    r"incorrect\s+api\s+key", r"invalid\s+api\s+key",
+    # 中文等价形态（源码文案汉化后，供应方失败信封仍需被识别并做安全化简）
+    r"提供方认证失败", r"计费或额度已耗尽", r"用量/额度已耗尽", r"提供方不可达",
+    r"被限流", r"重试\s*\d+\s*次后", r"非重试型错误", r"认证失败且无法刷新",
+    r"模型提供方在多次重试后仍然失败")
 _GATEWAY_PROVIDER_ERROR_SHAPE_RE = re.compile(
     r"^\s*(\W*\s*)?("
     + "|".join(_PROVIDER_ERROR_MARKERS + _CONNECTION_ERROR_MARKERS[:8] + (r"all\s+connection\s+attempts\s+failed",))
@@ -2616,7 +2639,7 @@ _INTERRUPT_REASON_EVICTED = "Session ended while the turn was running"
 _INTERRUPT_TOOL_REASON_EVICTED = "session evicted"
 _INTERRUPT_TOOL_REASON_GATEWAY_SHUTDOWN = "gateway shutdown"
 _INTERRUPT_REASON_SSE_DISCONNECT = "SSE client disconnected"
-_INTERRUPT_REASON_GATEWAY_SHUTDOWN = "Gateway shutting down"
+_INTERRUPT_REASON_GATEWAY_SHUTDOWN = "网关正在关闭"
 _INTERRUPT_REASON_GATEWAY_RESTART = "Gateway restarting"
 
 
@@ -3004,7 +3027,7 @@ def _format_concise_process_notification(
     """One-line completion message for ``concise`` display mode; failure appends a short output tail."""
     ok = exit_code in {0, None}
     icon = "✅" if ok else "❌"
-    parts = [f"{icon} Background task {'finished' if ok else 'failed'}"]
+    parts = [f"{icon} 后台任务{'finished' if ok else 'failed'}"]
     short_cmd = _shorten_command_for_display(command)
     if short_cmd:
         parts.append(f"— `{short_cmd}`")
@@ -3049,11 +3072,11 @@ def _format_gateway_process_notification(evt: dict) -> "str | None":
         _out = evt.get("output", "")
         _sup = evt.get("suppressed", 0)
         text = (
-            f"[IMPORTANT: Background process {_sid} matched "
-            f"watch pattern \"{_pat}\".\n"
-            f"Command: {_cmd}\nMatched output:\n{_out}")
+            f"[IMPORTANT: 后台进程 {_sid} 命中了 "
+            f"监视模式 {_pat!r}。\n"
+            f"命令：{_cmd}\n命中输出：\n{_out}")
         if _sup:
-            text += f"\n({_sup} earlier matches were suppressed by rate limit)"
+            text += f"\n（另有 {_sup} 次命中因限流被抑制）"
         text += "]"
         return text
 
@@ -3121,7 +3144,7 @@ def _normalize_empty_agent_response(
         if failure_reason.startswith("session_persistence_failed") or "session storage" in error_str:
             if failure_reason.endswith(":disk") or "disk" in error_str:
                 return (
-                    "⚠️ Session storage was temporarily unavailable, so this "
+                    "⚠️ 会话存储暂时不可用，因此本次 "
                     "turn was stopped to protect your conversation history. "
                     "Please check available disk space, then send your message again.")
             return (
@@ -3153,8 +3176,8 @@ def _normalize_empty_agent_response(
         # isn't lost in silence. (#31884)
         if api_calls == 0:
             return (
-                "⚠️ Your message was interrupted before processing started "
-                "(likely by a recent /stop). Please send it again.")
+                "⚠️ 你的消息在处理开始前就被中断了"
+                "（可能由最近的 /stop 引起）。请重新发送。")
         return response
     if api_calls > 0:
         # Hidden-reasoning-only retry exhaustion: the loop's sentinel text ("Codex response remained
@@ -3183,7 +3206,7 @@ def _normalize_empty_agent_response(
                 f"⚠️ I had to stop before finishing{reason}. Use /retry to try again, or /compress "
                 "if this conversation has grown very long.")
         return (
-            "⚠️ Processing completed but no response was generated. "
+            "⚠️ 处理已完成，但没有生成任何回复。"
             "This may be a transient error — try sending your message again.")
 
     # api_calls == 0, not failed/interrupted: agent never ran (post-/stop race); don't drop silently.
@@ -3988,7 +4011,7 @@ class GatewayRunner(
         return "restart" if self._restart_requested else "shutdown"
 
     def _status_action_gerund(self) -> str:
-        return "restarting" if self._restart_requested else "shutting down"
+        return "重启中" if self._restart_requested else "关闭中"
 
     def _update_runtime_status(self, gateway_state: Optional[str] = None, exit_reason: Optional[str] = None) -> None:
         # ``active_work`` names each unit only while draining — that is when an observer (``hermes
@@ -4055,9 +4078,9 @@ class GatewayRunner(
     # Command-specific mid-run reject texts (busy_policy == "reject" with a busy_handler naming an
     # entry here); all other rejected commands get the generic text in _dispatch_busy_slash_command.
     _BUSY_REJECT_TEXT: Dict[str, str] = {
-        "model": "Agent is running — wait or /stop first, then switch models.",
-        "codex-runtime": "Agent is running — wait or /stop first, then change runtime.",
-        "moa": "Agent is running — wait or /stop first, then run /moa."}
+        "model": "代理正在运行 —— 请先等待或 /stop，再切换模型。",
+        "codex-runtime": "代理正在运行 —— 请先等待或 /stop，再切换运行时。",
+        "moa": "代理正在运行 —— 请先等待或 /stop，再运行 /moa。"}
 
     def _active_profile_name(self) -> str:
         """Return the profile name this gateway represents."""

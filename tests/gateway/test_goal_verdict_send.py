@@ -140,7 +140,7 @@ async def test_goal_verdict_continue_enqueues_continuation(hermes_home):
 
     # Status line sent back
     assert len(adapter.sends) == 1
-    assert "Continuing toward goal" in adapter.sends[0]["content"]
+    assert "正朝着目标继续" in adapter.sends[0]["content"]
     # Continuation prompt enqueued for next turn
     assert adapter._pending_messages, "continuation prompt must be enqueued in pending_messages"
 
@@ -168,8 +168,8 @@ async def test_goal_verdict_budget_exhausted_sends_pause(hermes_home):
 
     assert len(adapter.sends) == 1
     content = adapter.sends[0]["content"]
-    assert "paused" in content.lower()
-    assert "turns used" in content.lower()
+    assert "已暂停" in content
+    assert "已用" in content
     # No continuation enqueued when budget is exhausted
     assert not adapter._pending_messages
 

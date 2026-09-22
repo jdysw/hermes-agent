@@ -455,7 +455,7 @@ class TestTickLifecycle:
             decision = mgr.complete_tick("The repository was deleted; there is no CI to watch.")
         assert decision["stopped"] is True
         assert decision["status"] == "paused"
-        assert "unachievable" in decision["message"]
+        assert "无法达成" in decision["message"]
 
     def test_until_judge_error_fails_open(self, hermes_home):
         from hermes_cli.loops import LoopManager
@@ -556,14 +556,14 @@ class TestControls:
         from hermes_cli.loops import LoopManager
 
         mgr = LoopManager(session_id="c4")
-        assert "No loop set" in mgr.status_line()
+        assert "未设置循环" in mgr.status_line()
         mgr.set("poll the build", interval_seconds=300)
-        assert "active" in mgr.status_line()
+        assert "进行中" in mgr.status_line()
         assert "poll the build" in mgr.status_line()
         mgr.pause()
-        assert "paused" in mgr.status_line()
+        assert "已暂停" in mgr.status_line()
         mgr.clear()
-        assert "No loop set" in mgr.status_line()
+        assert "未设置循环" in mgr.status_line()
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -615,8 +615,8 @@ class TestDispatchLoopCommand:
         mgr = LoopManager(session_id="d1")
         result = dispatch_loop_command(mgr, "5m check the deploy")
         assert result["created"] is True
-        assert "Loop set" in result["output"]
-        assert "every 5m" in result["output"]
+        assert "循环已设置" in result["output"]
+        assert "每 5m" in result["output"]
 
     def test_create_self_paced(self, hermes_home):
         from hermes_cli.loops import LoopManager, dispatch_loop_command
@@ -624,7 +624,7 @@ class TestDispatchLoopCommand:
         mgr = LoopManager(session_id="d2")
         result = dispatch_loop_command(mgr, "keep fixing the tests")
         assert result["created"] is True
-        assert "Self-paced" in result["output"]
+        assert "自适应" in result["output"]
 
     def test_create_fires_immediately(self, hermes_home):
         from hermes_cli.loops import LoopManager, dispatch_loop_command
@@ -632,8 +632,8 @@ class TestDispatchLoopCommand:
         mgr = LoopManager(session_id="d2a")
         result = dispatch_loop_command(mgr, "1h check the deploy")
         assert result["created"] is True
-        assert "Loop set" in result["output"]
-        assert "fires now" in result["output"]
+        assert "循环已设置" in result["output"]
+        assert "立即触发" in result["output"]
         assert mgr.is_due() is True
 
     def test_status_empty(self, hermes_home):
@@ -642,17 +642,17 @@ class TestDispatchLoopCommand:
         mgr = LoopManager(session_id="d3")
         result = dispatch_loop_command(mgr, "")
         assert result["created"] is False
-        assert "No loop set" in result["output"]
+        assert "未设置循环" in result["output"]
 
     def test_pause_resume_stop(self, hermes_home):
         from hermes_cli.loops import LoopManager, dispatch_loop_command
 
         mgr = LoopManager(session_id="d4")
         dispatch_loop_command(mgr, "5m poll")
-        assert "paused" in dispatch_loop_command(mgr, "pause")["output"].lower()
-        assert "resumed" in dispatch_loop_command(mgr, "resume")["output"].lower()
-        assert "stopped" in dispatch_loop_command(mgr, "stop")["output"].lower()
-        assert "No active loop" in dispatch_loop_command(mgr, "stop")["output"]
+        assert "已暂停" in dispatch_loop_command(mgr, "pause")["output"]
+        assert "已恢复" in dispatch_loop_command(mgr, "resume")["output"]
+        assert "已停止" in dispatch_loop_command(mgr, "stop")["output"]
+        assert "没有进行中的循环" in dispatch_loop_command(mgr, "stop")["output"]
 
     def test_route_stored(self, hermes_home):
         from hermes_cli.loops import LoopManager, dispatch_loop_command, load_loop
@@ -667,7 +667,7 @@ class TestDispatchLoopCommand:
 
         mgr = LoopManager(session_id="d6")
         out = dispatch_loop_command(mgr, "help")["output"]
-        assert "Usage" in out
+        assert "用法" in out
         assert "--times" in out
 
     def test_bad_times_error(self, hermes_home):

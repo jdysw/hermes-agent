@@ -553,7 +553,7 @@ class TestImport:
         run_import(Namespace(zipfile=str(zip_path), force=True))
 
         out = capsys.readouterr().out
-        assert "Done. Your Hermes configuration has been restored." in out
+        assert "完成。您的 Hermes 配置已恢复。" in out
         assert "hermes gateway install" in out
 
 
@@ -1432,7 +1432,7 @@ class TestQuickSnapshot:
         monkeypatch.setattr(backup_mod, "_safe_copy_db", boom)
         snap_id = backup_mod.create_quick_snapshot(hermes_home=hermes_home)
         err = capsys.readouterr().out
-        assert "SQLite safe copy FAILED" in err or "CRITICAL" in err
+        assert "SQLite 安全复制失败" in err or "严重" in err
         assert "state.db" in err
         # Other small files may still snapshot
         if snap_id:
@@ -1619,7 +1619,7 @@ class TestQuickSnapshot:
         assert second_id in snap_ids
 
         out = capsys.readouterr().out
-        assert "skipping state.db" in out.lower() or "skipping snapshot prune" in out.lower()
+        assert "跳过 state.db" in out or "跳过快照清理" in out
 
 
 class TestQuickSnapshotProjectsKanban:
@@ -2445,8 +2445,8 @@ class TestImportLiveSessionDatabase:
         run_import(Namespace(zipfile=str(zip_path), force=True))
 
         out = capsys.readouterr().out
-        assert "Session data replaced by older backup contents" in out
-        assert "3 session(s) / 12 message(s) -> 2 / 4" in out
+        assert "会话数据已被较旧的备份内容替换" in out
+        assert "3 个会话 / 12 条消息 → 2 / 4" in out
 
     def test_newer_backup_reports_nothing(self, tmp_path, monkeypatch, capsys):
         """No warning when the import does not shrink the database."""
@@ -2458,7 +2458,7 @@ class TestImportLiveSessionDatabase:
         run_import(Namespace(zipfile=str(zip_path), force=True))
 
         out = capsys.readouterr().out
-        assert "Session data replaced by older backup contents" not in out
+        assert "会话数据已被较旧的备份内容替换" not in out
 
     def test_refused_restore_is_reported_and_leaves_db_intact(
         self, tmp_path, monkeypatch, capsys
@@ -2472,7 +2472,7 @@ class TestImportLiveSessionDatabase:
         backup_mod.run_import(Namespace(zipfile=str(zip_path), force=True))
 
         out = capsys.readouterr().out
-        assert "files skipped" in out
+        assert "已跳过" in out
         assert "state.db" in out
         # The pre-import database is still the one on disk.
         assert _count_rows(live_db) == (3, 12)

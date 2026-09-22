@@ -69,8 +69,8 @@ async def test_preview_with_here_boundary():
     result = await runner._handle_compress_command(
         _make_event("/compress --preview here 2")
     )
-    assert "last 2 exchange" in result
-    assert "4 of 8" in result
+    assert "最后 2 轮对话" in result
+    assert "8 条消息中的 4 条" in result
     runner.session_store.rewrite_transcript.assert_not_called()
 
 
@@ -80,7 +80,7 @@ async def test_aggressive_dry_run_shows_preview_plus_note():
     result = await runner._handle_compress_command(
         _make_event("/compress --aggressive --dry-run")
     )
-    assert "no changes made" in result.lower()
+    assert "未做任何更改" in result
     assert "--aggressive is not supported" in result
     runner.session_store.rewrite_transcript.assert_not_called()
 

@@ -96,7 +96,7 @@ class TestSystemdServiceRefresh:
         gateway_cli.systemd_restart()
 
         output = capsys.readouterr().out
-        assert "still restarting after 90s" in output
+        assert "仍在重启中" in output
         assert "hermes gateway status" in output
 
     def test_refresh_refuses_to_bake_pytest_tmpdir_into_real_user_unit(
@@ -182,7 +182,7 @@ class TestRequireServiceInstalled:
 
         assert exc_info.value.code == 1
         out = capsys.readouterr().out
-        assert "not installed" in out
+        assert "尚未安装" in out
         assert "hermes gateway install" in out
 
     def test_passes_when_unit_exists(self, tmp_path, monkeypatch):
@@ -791,10 +791,10 @@ class TestLaunchdServiceRecovery:
         gateway_cli.launchd_status()
 
         out = capsys.readouterr().out
-        assert "cannot manage the gateway on this macos version" in out.lower()
-        assert "Detached fallback process is running" in out
+        assert "无法管理网关" in out.lower()
+        assert "脱离的兜底进程正在运行" in out
         assert "PID 88888" in out
-        assert "NOT available" in out
+        assert "不可用" in out
 
 
 class TestLaunchdDomainDetection:
@@ -980,7 +980,7 @@ class TestGatewaySystemServiceRouting:
         assert ("graceful", 654, 27.0) in calls
         assert ("wait", False, 654) in calls
         out = capsys.readouterr().out.lower()
-        assert "restarting gracefully" in out
+        assert "正在优雅重启" in out
         assert "21627" not in out  # must use the mocked budget, not live defaults
         assert "27" in out
 
@@ -1018,7 +1018,7 @@ class TestGatewaySystemServiceRouting:
         gateway_cli.systemd_restart()
 
         assert [call[0][0] for call in calls] == ["reset-failed", "start"]
-        assert "did not relaunch" in capsys.readouterr().out
+        assert "未在网关优雅退出后重新拉起" in capsys.readouterr().out
 
     def test_systemd_restart_does_not_force_an_unready_replacement(self, monkeypatch):
         calls = []
@@ -1229,7 +1229,7 @@ class TestGatewaySystemServiceRouting:
         # The success message must follow an observed replacement PID.
         assert ("observe", "ai.hermes.gateway", 654, "gui/501") in calls
         out = capsys.readouterr().out
-        assert "up to 27s" in out
+        assert "最多 27 秒" in out
         assert "up to 0s" not in out
 
     def test_launchd_restart_forces_kickstart_when_no_replacement_appears(
@@ -1695,7 +1695,7 @@ class TestSystemServiceIdentityRootHandling:
         monkeypatch.setenv("USER", "root")
         monkeypatch.setenv("LOGNAME", "root")
 
-        with pytest.raises(ValueError, match="pass --run-as-user root to override"):
+        with pytest.raises(ValueError, match="如需覆盖请传入 --run-as-user root"):
             gateway_cli._system_service_identity(run_as_user=None)
 
     def test_explicit_root_is_allowed(self, monkeypatch):
@@ -1820,7 +1820,7 @@ class TestPreflightUserSystemd:
         # Should not raise.
         gateway_cli._preflight_user_systemd()
         out = capsys.readouterr().out
-        assert "Enabled linger" in out
+        assert "已为 ubuntu 启用 linger" in out
 
 
 class TestProfileArg:
@@ -2153,7 +2153,7 @@ class TestLegacyHermesUnitDetection:
         gateway_cli.print_legacy_unit_warning()
         out = capsys.readouterr().out
 
-        assert "Legacy" in out
+        assert "遗留" in out
         assert "hermes.service" in out
         assert "hermes gateway migrate-legacy" in out
 
@@ -2306,7 +2306,7 @@ class TestGatewayStatusParser:
         gateway_cli.gateway_command(args)
 
         out = capsys.readouterr().out
-        assert "only applies to systemd" in out
+        assert "仅适用于基于 systemd" in out
 
 
 class TestSystemdInstallOffersLegacyRemoval:
@@ -2518,8 +2518,8 @@ class TestSystemScopeRemediationOutput:
         gateway_cli._print_system_scope_remediation("start")
         out = capsys.readouterr().out
 
-        assert "system-wide service" in out
-        assert "start requires root" in out
+        assert "系统级服务" in out
+        assert "需要 root 权限" in out
         assert "sudo systemctl start hermes-gateway" in out
         assert "sudo hermes gateway uninstall --system" in out
         assert "hermes gateway install" in out
@@ -2556,7 +2556,7 @@ class TestGatewayCommandCatchesSystemScopeError:
         assert excinfo.value.code == 1
         out = capsys.readouterr().out
         # Renders the message, NOT the ``('msg', 'action')`` tuple repr
-        assert "System gateway start requires root. Re-run with sudo." in out
+        assert "系统网关 start 需要 root 权限。请用 sudo 重新运行。" in out
         assert "('" not in out  # no tuple repr leaking through
 
 

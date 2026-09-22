@@ -180,7 +180,7 @@ def _backup_operation_lock(hermes_home: Path, timeout_seconds: float = 0.25):
                 acquired = True
             except OSError:
                 if time.monotonic() >= deadline:
-                    raise BackupInProgressError("another Hermes backup is already running")
+                    raise BackupInProgressError("另一个 Hermes 备份正在运行")
                 time.sleep(0.05)
         yield
     finally:
@@ -620,7 +620,7 @@ def _print_capped(header: str, lines: List[str], indent: str) -> None:
     for line in lines[:10]:
         print(f"{indent}{line}")
     if len(lines) > 10:
-        print(f"{indent}... and {len(lines) - 10} more")
+        print(f"{indent}……另有 {len(lines) - 10} 个")
 
 
 # --- Backup ---
@@ -644,7 +644,7 @@ def _resolve_backup_output_path(output: Optional[str]) -> Path:
             out_path = out_path.with_suffix(out_path.suffix + ".zip")
         out_path.parent.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
-        print(f"Error: cannot write backup to {output or out_path}: {exc}")
+        print(f"错误：无法将备份写入 {output or out_path}：{exc}")
         raise SystemExit(1) from exc
     return out_path
 
@@ -679,14 +679,14 @@ def run_backup(args) -> bool:
     hermes_root = get_default_hermes_root()
 
     if not hermes_root.is_dir():
-        print(f"Error: Hermes home directory not found at {hermes_root}")
+        print(f"错误：未在 {hermes_root} 找到 Hermes 主目录")
         sys.exit(1)
 
     try:
         with _backup_operation_lock(hermes_root):
             return _run_backup_locked(args, hermes_root)
     except BackupInProgressError as exc:
-        print(f"Error: {exc}")
+        print(f"错误：{exc}")
         raise SystemExit(2) from exc
 
 
@@ -695,32 +695,32 @@ def _run_backup_locked(args, hermes_root: Path) -> bool:
     out_path = _resolve_backup_output_path(args.output)
     scan_started = time.monotonic()
     logger.info("backup phase=scan status=started")
-    print(f"Scanning {display_hermes_home()} ...")
+    print(f"正在扫描 {display_hermes_home()}……")
     skipped_dirs: set = set()
     files_to_add: list[tuple[Path, Path]] = list(_iter_backup_files(hermes_root, out_path, skipped_dirs))
     external_to_add, skipped_external = _collect_external_entries()
     if not files_to_add and not external_to_add:
         logger.info("backup phase=scan status=empty duration_ms=%.1f", (time.monotonic() - scan_started) * 1000)
-        print("No files to back up.")
+        print("没有可备份的文件。")
         return True
 
     file_count = len(files_to_add) + len(external_to_add)
     logger.info("backup phase=scan status=complete duration_ms=%.1f files=%d",
                 (time.monotonic() - scan_started) * 1000, file_count)
     logger.info("backup phase=archive status=started files=%d", file_count)
-    print(f"Backing up {file_count} files ...")
+    print(f"正在备份 {file_count} 个文件……")
     errors = []
     t0 = time.monotonic()
 
     def _progress(i: int) -> None:
-        print(f"  {i}/{file_count} files ...")
+        print(f"  已处理 {i}/{file_count} 个文件……")
         logger.info("backup phase=archive status=progress completed=%d total=%d", i, file_count)
 
     with _atomic_output_path(out_path) as archive_path, zipfile.ZipFile(
             archive_path, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as zf:
         total_bytes = _write_zip_entries(
             zf, files_to_add, out_path, on_progress=_progress, track_bytes=True,
-            on_db_failure=lambda rel: errors.append(f"{rel}: SQLite safe copy failed"),
+            on_db_failure=lambda rel: errors.append(f"{rel}：SQLite 安全复制失败"),
             on_error=lambda rel, exc: errors.append(f"{rel}: {exc}"))
         # External memory-provider state never includes ``.db`` files in practice, so a
         # straight zf.write is fine.
@@ -766,10 +766,10 @@ def _validate_backup_zip(zf: zipfile.ZipFile) -> tuple[bool, str]:
     """Check that a zip looks like a Hermes backup."""
     names = zf.namelist()
     if not names:
-        return False, "zip archive is empty"
+        return False, "zip 归档为空"
     # Telltale files a hermes home has — at the root or one level deep (zipped directory).
     if not any(Path(n).name in {"config.yaml", ".env", "state.db"} for n in names):
-        return False, "zip does not appear to be a Hermes backup (no config.yaml, .env, or state databases found)"
+        return False, "zip 看起来不是 Hermes 备份（未找到 config.yaml、.env 或状态数据库）"
     return True, ""
 
 
@@ -889,9 +889,8 @@ def _import_db_member(
             os.fsync(dst.fileno())
         if not _safe_restore_db(Path(tmp_name), target):
             raise OSError(
-                "live-safe restore refused or failed; the existing database was "
-                "left untouched. Stop the gateway/dashboard processes holding it "
-                "open and re-run the import."
+                "实时安全恢复被拒绝或失败；现有数据库保持原样。"
+                "请停止持有该数据库的网关/仪表盘进程，然后重新运行导入。"
             )
         _restore_file_owner(target, owner)
         _restore_file_mode(target, mode)
@@ -904,16 +903,16 @@ def _confirm_import_overwrite(hermes_root: Path) -> bool:
     """Prompt before importing over an existing installation; True when import may proceed."""
     if not any((hermes_root / m).exists() for m in ("config.yaml", ".env")):
         return True
-    print("\nWarning: Target directory already has Hermes configuration.\n"
-          "Importing will overwrite existing files with backup contents.\n")
+    print("\n警告：目标目录已存在 Hermes 配置。\n"
+          "导入将用备份内容覆盖现有文件。\n")
     try:
-        answer = input("Continue? [y/N] ").strip().lower()
+        answer = input("是否继续？[y/N] ").strip().lower()
     except (EOFError, KeyboardInterrupt):
-        print("\nAborted.")
+        print("\n已中止。")
         sys.exit(1)
     if answer in {"y", "yes"}:
         return True
-    print("Aborted.")
+    print("已中止。")
     return False
 
 
@@ -960,7 +959,7 @@ def _import_members(
 
         label = member if external else rel
         if not _is_within(target, root):
-            errors.append(f"{label}: path traversal blocked")
+            errors.append(f"{label}：路径遍历被阻止")
         else:
             try:
                 target.parent.mkdir(parents=True, exist_ok=True)
@@ -985,7 +984,7 @@ def _import_members(
                 errors.append(f"{label}: {exc}")
 
         if restored % 500 == 0:
-            print(f"  {restored}/{file_count} files ...")
+            print(f"  已恢复 {restored}/{file_count} 个文件……")
 
     return restored, restored_external, errors, skipped_runtime, db_shrunk
 
@@ -994,10 +993,10 @@ def run_import(args) -> None:
     """Restore a Hermes backup from a zip file."""
     zip_path = Path(args.zipfile).expanduser().resolve()
     if not zip_path.is_file():
-        print(f"Error: File not found: {zip_path}")
+        print(f"错误：找不到文件：{zip_path}")
         sys.exit(1)
     if not zipfile.is_zipfile(zip_path):
-        print(f"Error: Not a valid zip file: {zip_path}")
+        print(f"错误：不是有效的 zip 文件：{zip_path}")
         sys.exit(1)
     # The restore target is the home the command operates under (the printed "Target:");
     # ``get_default_hermes_root()`` would silently retarget a profile restore at the live root.
@@ -1005,23 +1004,23 @@ def run_import(args) -> None:
     with zipfile.ZipFile(zip_path, "r") as zf:
         ok, reason = _validate_backup_zip(zf)
         if not ok:
-            print(f"Error: {reason}")
+            print(f"错误：{reason}")
             sys.exit(1)
         prefix = _detect_prefix(zf)
         members = [n for n in zf.namelist() if not n.endswith("/")]
         file_count = len(members)
-        print(f"Backup contains {file_count} files\nTarget: {display_hermes_home()}")
+        print(f"备份包含 {file_count} 个文件\n目标：{display_hermes_home()}")
         if prefix:
-            print(f"Detected archive prefix: {prefix!r} (will be stripped)")
+            print(f"检测到归档前缀：{prefix!r}（将被剥离）")
         if not args.force and not _confirm_import_overwrite(hermes_root):
             return
-        print(f"\nImporting {file_count} files ...")
+        print(f"\n正在导入 {file_count} 个文件……")
         hermes_root.mkdir(parents=True, exist_ok=True)
         t0 = time.monotonic()
         restored, restored_external, errors, skipped_runtime, db_shrunk = _import_members(
             zf, members, prefix, hermes_root, file_count)
         elapsed = time.monotonic() - t0
-        print(f"\nImport complete: {restored} files restored in {elapsed:.1f}s\n  Target: {display_hermes_home()}")
+        print(f"\n导入完成：已恢复 {restored} files restored in {elapsed:.1f}s\n  Target: {display_hermes_home()}")
         if restored_external:
             print(f"\n  Restored {restored_external} memory-provider file(s) to "
                   f"their original location(s) outside {display_hermes_home()}.")
@@ -1067,24 +1066,24 @@ def _restore_profile_wrappers(hermes_root: Path) -> List[str]:
             profile_name = entry.name
             collision = check_alias_collision(profile_name)
             if collision:
-                print(f"  Skipped alias '{profile_name}': {collision}")
+                print(f"  已跳过别名 '{profile_name}'：{collision}")
             restored_profiles.append(
                 (profile_name, not collision and create_wrapper_script(profile_name) is not None))
         if restored_profiles:
             created = [n for n, ok in restored_profiles if ok]
             skipped = [n for n, ok in restored_profiles if not ok]
             if created:
-                print(f"\n  Profile aliases restored: {', '.join(created)}")
+                print(f"\n  已恢复的 profile 别名：{', '.join(created)}")
             if skipped:
-                print(f"  Profile aliases skipped:  {', '.join(skipped)}")
+                print(f"  已跳过的 profile 别名：{', '.join(skipped)}")
             if not _is_wrapper_dir_in_path():
-                print(f"\n  Note: {_get_wrapper_dir()} is not in your PATH.\n"
-                      "  Add to your shell config (~/.bashrc or ~/.zshrc):\n"
+                print(f"\n  注意：{_get_wrapper_dir()} 不在您的 PATH 中。\n"
+                      "  请加入您的 shell 配置（~/.bashrc 或 ~/.zshrc）：\n"
                       '    export PATH="$HOME/.local/bin:$PATH"')
     except ImportError:  # hermes_cli.profiles unavailable (fresh install)
         if any(profiles_dir.iterdir()):
-            print("\n  Profiles detected but aliases could not be created.\n"
-                  "  Run: hermes profile list  (after installing hermes)")
+            print("\n  检测到 profile，但无法创建别名。\n"
+                  "  运行：hermes profile list （安装 hermes 之后）")
     return [n for n, _ in restored_profiles]
 
 
@@ -1099,9 +1098,9 @@ def _revive_gateway_after_import(hermes_root: Path) -> None:
     native_default = _get_platform_default_hermes_home()
     if hermes_root != native_default and any(
             (native_default / marker).exists() for marker in ("config.yaml", ".env", "state.db")):
-        print("\nRestored into a non-default home; leaving the gateway service alone to avoid clashing "
-              f"with the install at {native_default}.\n"
-              "To start a gateway for this home, run:  hermes gateway install")
+        print("\n已恢复到非默认主目录；为避免与 "
+              f"{native_default} 处的安装冲突，未改动网关服务。\n"
+              "要为此主目录启动网关，请运行：  hermes gateway install")
         return
     try:
         from hermes_cli.gateway import ensure_gateway_service, _is_service_running
@@ -1109,7 +1108,7 @@ def _revive_gateway_after_import(hermes_root: Path) -> None:
             print()
             ensure_gateway_service(context="import")
     except Exception:
-        print("\nStart the gateway to activate cron jobs and messaging:\n  hermes gateway install")
+        print("\n启动网关以激活定时任务和消息功能：\n  hermes gateway install")
 
 
 # --- Quick state snapshots (used by /snapshot slash command and hermes backup --quick) ---
@@ -1187,8 +1186,8 @@ def _copy_quick_snapshot_files(
             except OSError:
                 size = None
             if size is not None and size > max_file_size:
-                print(f"  ⚠ Snapshot: skipping {rel} "
-                      f"({_format_size(size)} exceeds {_format_size(max_file_size)} limit)")
+                print(f"  ⚠ 快照：跳过 {rel} "
+                      f"（{_format_size(size)} 超过 {_format_size(max_file_size)} 上限）")
                 logger.warning("Quick snapshot skipped %s: %d bytes exceeds %d byte limit", rel, size, max_file_size)
                 if src.suffix == ".db":
                     oversized_skipped.append(rel)
@@ -1200,11 +1199,11 @@ def _copy_quick_snapshot_files(
             if src.suffix == ".db":
                 if not _safe_copy_db(src, dst):
                     failed_dbs.append(rel)
-                    print(f"  ⚠ Snapshot: SQLite safe copy FAILED for {rel} — file may be locked or corrupted")
+                    print(f"  ⚠ 快照：{rel} 的 SQLite 安全复制失败——文件可能被锁定或已损坏")
                     if is_zeroed_sqlite_file(src):
-                        nuls = " of NULs?" if in_dir else ""
-                        print(f"  ⚠ Snapshot: {rel} looks ZEROED "
-                              f"(no SQLite header; {src.stat().st_size} bytes{nuls})")
+                        nuls = " 个 NUL？" if in_dir else ""
+                        print(f"  ⚠ 快照：{rel} 疑似被清零 "
+                              f"（无 SQLite 文件头；{src.stat().st_size} 字节{nuls}）")
                     continue
             else:
                 shutil.copy2(src, dst)
@@ -1259,14 +1258,14 @@ def _create_quick_snapshot_locked(
     if failed_dbs:
         # Surface on stdout: a log-and-continue made a missing state.db backup look like a
         # successful pre-update snapshot (#68474).
-        print(f"  ⚠ CRITICAL: could not snapshot DB file(s): {', '.join(failed_dbs)}\n"
+        print(f"  ⚠ 严重：无法为数据库文件创建快照：{', '.join(failed_dbs)}\n"
               f"  ⚠ If sessions disappear after the update, check {root}. {_snapshot_recovery_hint()}")
         logger.error("Quick snapshot failed to capture DB file(s): %s", ", ".join(failed_dbs))
     if not manifest:
         shutil.rmtree(staging_dir, ignore_errors=True)
         if failed_dbs:
             # Distinguish "nothing to snapshot" from "state.db present but unreadable"
-            print(f"  ⚠ Snapshot aborted: no files captured (failed DBs: {', '.join(failed_dbs)})")
+            print(f"  ⚠ 快照已中止：未捕获任何文件（失败的数据库：{', '.join(failed_dbs)}）")
         return None
     meta = {
         "id": snap_id, "timestamp": ts, "label": label, "file_count": len(manifest),
@@ -1284,7 +1283,7 @@ def _create_quick_snapshot_locked(
         _prune_oldest(_snapshot_dirs(root), _QUICK_DEFAULT_KEEP if keep is None else keep, shutil.rmtree, "snapshot")
     else:
         if oversized_skipped:
-            print("  ⚠ Skipping snapshot prune: DB file(s) skipped for size: " + ", ".join(oversized_skipped))
+            print("  ⚠ 跳过快照清理：因文件大小而跳过的数据库文件：" + ", ".join(oversized_skipped))
             logger.warning("Quick snapshot skipped oversized DB file(s): %s", ", ".join(oversized_skipped))
         logger.warning(
             "Skipping snapshot prune because %d DB(s) failed to capture and/or %d were oversized "
@@ -1610,11 +1609,11 @@ def run_quick_backup(args) -> None:
     """CLI entry point for hermes backup --quick."""
     snap_id = create_quick_snapshot(label=getattr(args, "label", None))
     if snap_id:
-        print(f"State snapshot created: {snap_id}\n"
-              f"  {len(list_quick_snapshots())} snapshot(s) stored in {display_hermes_home()}/state-snapshots/\n"
-              f"  Restore with: /snapshot restore {snap_id}")
+        print(f"状态快照已创建：{snap_id}\n"
+              f"  已存储 {len(list_quick_snapshots())} 个快照于 {display_hermes_home()}/state-snapshots/\n"
+              f"  恢复命令：/snapshot restore {snap_id}")
     else:
-        print("No state files found to snapshot.")
+        print("未找到可创建快照的状态文件。")
 
 
 # --- Shared full-zip backup helper ---

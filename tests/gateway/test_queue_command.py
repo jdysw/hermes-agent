@@ -103,7 +103,7 @@ async def test_queue_preserves_photo_media():
     )
     result = await runner._handle_message(event)
 
-    assert result is not None and "queued" in result.lower()
+    assert result is not None and "已排队" in result
     queued = adapter._pending_messages[sk]
     assert queued.text == "look at this"
     assert queued.message_type == MessageType.PHOTO
@@ -127,7 +127,7 @@ async def test_queue_preserves_reply_context():
     )
     result = await runner._handle_message(event)
 
-    assert result is not None and "queued" in result.lower()
+    assert result is not None and "已排队" in result
     queued = adapter._pending_messages[sk]
     assert queued.reply_to_message_id == "orig-7"
     assert queued.reply_to_text == "the original message"

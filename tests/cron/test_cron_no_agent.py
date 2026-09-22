@@ -253,9 +253,9 @@ def test_timed_out_no_agent_script_delivery_is_not_mislabeled_as_provider_failur
 
     assert scheduler.run_one_job(job) is True
     assert len(delivered) == 1
-    assert "script timed out" in delivered[0].lower()
-    assert "provider" not in delivered[0].lower()
-    assert "fallback" not in delivered[0].lower()
+    assert "脚本超时" in delivered[0]
+    assert "提供方" not in delivered[0]
+    assert "备用链" not in delivered[0]
 
 
 def test_agent_provider_timeout_delivery_keeps_fallback_guidance(hermes_env, monkeypatch):
@@ -381,7 +381,7 @@ def test_run_job_script_accepts_pathlike_script_path(hermes_env):
 # "authentication" had its failure attributed to a provider it never called.
 #
 # Observed in practice: _run_job_script reports a timeout as "Script timed out
-# after {n}s: {path}", which was delivered to chat as "provider timeout. Fallback
+# after {n}s: {path}", which was delivered to chat as "提供方超时. Fallback
 # chain was exhausted or unavailable." for a job that never opened a socket.
 #
 # The summarizer had no direct test coverage — the only test referencing it

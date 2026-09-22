@@ -90,20 +90,20 @@ def summarize_compress_preview(
         effective_partial = bool(tail)
 
     lines = [
-        "Preview — no changes made.",
-        f"Would compress {len(head)} of {total} message(s) "
-        f"(~{approx_tokens:,} tokens currently in context).",
+        "预览——未做任何更改。",
+        f"将压缩 {total} 条消息中的 {len(head)} 条"
+        f"（当前上下文约 {approx_tokens:,} 个 token）。",
     ]
     if effective_partial:
         lines.append(
-            f"Boundary: keeping the last {keep_last} exchange(s) "
-            f"({len(tail)} message(s)) verbatim."
+            f"边界：原样保留最后 {keep_last} 轮对话"
+            f"（{len(tail)} 条消息）。"
         )
     elif partial:
-        lines.append("Boundary: 'here' split would keep everything — falling back to full compression.")
+        lines.append("边界：'here' 切分会保留全部内容——回退为完整压缩。")
     if focus_topic:
-        lines.append(f'Focus topic: "{focus_topic}"')
-    lines.append("Run the command again without --preview to apply.")
+        lines.append(f'聚焦主题："{focus_topic}"')
+    lines.append("去掉 --preview 再次运行即可应用。")
 
     return {
         "head_count": len(head),

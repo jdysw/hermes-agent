@@ -475,10 +475,10 @@ def _update_owes_fleet_restart(*, receipt: dict | None = None, pending_manual: l
 def _warn_pending_fleet_restart(*, startup: bool = False) -> None:
     """Print the specific interrupted-update fleet-restart warning."""
     stream = sys.stderr if startup else sys.stdout
-    print("⚠ A previous `hermes update` pulled new code but did not restart running gateways.", file=stream)
-    print("  Gateways may still be serving pre-update modules (mixed sys.modules).", file=stream)
+    print("⚠ 先前的 `hermes update` 拉取了新代码，但未重启正在运行的网关。", file=stream)
+    print("  网关可能仍在提供更新前的模块（sys.modules 混杂）。", file=stream)
     if startup:
-        print("  Run `hermes update` or `hermes gateway restart`.", file=stream)
+        print("  请运行 `hermes update` 或 `hermes gateway restart`。", file=stream)
 
 
 def _warn_pending_fleet_restart_on_startup() -> None:
@@ -652,9 +652,9 @@ def _run_pending_fleet_restart() -> bool:
     from hermes_cli.update_host_obligation import host_restart_already_completed, mark_host_restart_completed
     checkout_sha = _restart_identity_sha()
     if host_restart_already_completed(checkout_sha):
-        print("  ✓ This host's gateway was already restarted for this update — not restarting it again.")
+        print("  ✓ 本机的网关已针对本次更新重启过 —— 不再重复重启。")
         return True
-    print("→ Restarting gateways left on pre-update code...")
+    print("→ 正在重启仍运行旧代码的网关……")
     # Warn if legacy Hermes gateway unit files are still installed. When both hermes.service (from a
     # pre-rename install) and the current hermes-gateway.service are enabled, they SIGTERM-fight for the
     # same bot token (see PR #11909). Flagging here means every `hermes update` surfaces the issue until the
@@ -723,7 +723,7 @@ def _run_pending_fleet_restart() -> bool:
         # Stamp the HOST obligation so every other profile's CLI knows this update's restart
         # already happened; without it each profile re-kills the one shared multiplexer.
         mark_host_restart_completed(checkout_sha or "")
-        print("  ✓ Pending fleet restart completed.")
+        print("  ✓ 待处理的网关重启已完成。")
         return True
     except Exception as exc:
         try:
@@ -789,9 +789,9 @@ def _apply_pending_fleet_restart_catchup(*, defer: bool = False) -> None:
         return
     print()
     _warn_pending_fleet_restart()
-    print("→ Running the pending fleet restart...")
+    print("→ 正在执行待处理的网关重启……")
     if not _run_pending_fleet_restart():
-        print("  ⚠ Fleet restart incomplete. Recover with: hermes gateway restart")
+        print("  ⚠ 网关重启未完成。请用以下命令恢复：hermes gateway restart")
         sys.exit(1)
     if not _pending_fleet_restart_needed():
         return
@@ -807,9 +807,9 @@ def _apply_pending_fleet_restart_catchup(*, defer: bool = False) -> None:
             fleet, discharges=lambda receipt: not _pending_fleet_restart_needed(receipt=receipt)
         )
         if settled:
-            print(f"  ✓ Update receipt settled: {len(fleet)} gateway(s) serve the checkout code.")
+            print(f"  ✓ 更新回执已结清：{len(fleet)} 个网关正在运行本次检出的代码。")
             return
-    print("  ⚠ Fleet restart ran, but gateways are still off the checkout code. Recover with: hermes gateway restart")
+    print("  ⚠ 网关重启已执行，但网关仍未运行本次检出的代码。请用以下命令恢复：hermes gateway restart")
     sys.exit(1)
 
 
@@ -922,21 +922,21 @@ def _warn_incomplete_gateway_fleet_restart(failed_units: list) -> None:
         return
     ordered = list(dict.fromkeys(failed_units))  # de-dup, discovery order
     print()
-    print("⚠ Update incomplete — some units were not restarted:")
+    print("⚠ 更新未完成 —— 部分单元未能重启：")
     for name in ordered:
         print(f"    - {name}")
     if is_macos():
         # A label lands here when launchd wasn't supervising a live process after
         # the restart — likely deregistered, which `launchctl kickstart` can't revive.
         # See #88848.
-        print("  Listed services may be deregistered from launchd, or still")
-        print("  running pre-update code (mixed sys.modules). Recover with:")
+        print("  列出的服务可能已从 launchd 注销，或仍在")
+        print("  运行更新前的代码（sys.modules 混杂）。请尝试恢复：")
         print("    hermes gateway status")
         print("    launchctl list | grep <label>")
         print("    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/<label>.plist")
         return
-    print("  Skipped units may still be running pre-update code (mixed")
-    print("  sys.modules). Restart them manually, then verify:")
+    print("  被跳过的单元可能仍在运行更新前的代码（")
+    print("  sys.modules 混杂）。请手动重启它们，然后验证：")
     print("    hermes gateway status")
     if any(not name.startswith("ai.hermes.") for name in ordered):
         print("    systemctl --user restart <unit>   # user-scope")
@@ -980,9 +980,9 @@ def _restart_launchd_gateway_after_update(*, supervision_verify: bool = True) ->
         except subprocess.CalledProcessError as e:
             stderr = (getattr(e, "stderr", "") or "").strip()
             print(
-                f"  ⚠ Gateway restart failed: {stderr}\n"
-                "    The gateway may be DOWN on pre-update code. "
-                "Recover manually: hermes gateway restart"
+                f"  ⚠ 网关重启失败：{stderr}\n"
+                "    网关可能已停机且仍在运行旧代码。 "
+                "请手动恢复：hermes gateway restart"
             )
             return [], [current_label]
     except (FileNotFoundError, subprocess.TimeoutExpired) as e:
@@ -990,9 +990,9 @@ def _restart_launchd_gateway_after_update(*, supervision_verify: bool = True) ->
         # launchctl is not proof nothing needs restarting. Count it, tell the operator.
         print(
             # The old code `pass`ed here (#74973's second silent variant); count it and tell the operator.
-            "  ⚠ Could not restart the gateway "
-            f"({e.__class__.__name__}: {e}).\n"
-            "    Recover manually: hermes gateway restart"
+            "  ⚠ 无法重启网关 "
+            f"（{e.__class__.__name__}: {e}）。\n"
+            "    请手动恢复：hermes gateway restart"
         )
         return [], [current_label]
 
@@ -1008,8 +1008,8 @@ def _restart_launchd_gateway_after_update(*, supervision_verify: bool = True) ->
     if wait_for_launchd_gateway_supervision(label=current_label, old_pid=old_pid):
         return [current_label], []
     print(
-        f"  ✗ {current_label} restarted but launchd is not supervising a new process for it.\n"
-        "    Check logs, then: hermes gateway restart"
+        f"  ✗ {current_label} 已重启，但 launchd 尚未为它监管新进程。\n"
+        "    请检查日志，然后执行：hermes gateway restart"
     )
     return [], [current_label]
 
@@ -1066,7 +1066,7 @@ def _restart_macos_launchd_gateways(
                 continue  # A profile without an installed job has no restart target.
             graceful_ok = False
             if old_pid is not None and old_pid > 0:
-                print(f"  → {label}: draining (up to {int(drain_budget)}s)...")
+                print(f"  → {label}: 正在排空（最多 {int(drain_budget)}s)...")
                 from hermes_cli.update_cmd_drain_report import drain_progress_reporter
                 graceful_ok = _graceful_restart_via_sigusr1(
                     old_pid, drain_timeout=drain_budget,
@@ -1081,8 +1081,8 @@ def _restart_macos_launchd_gateways(
                 stderr = (getattr(e, "stderr", "") or "").strip()
                 failed_or_stale_units.append(label)
                 print(
-                    f"  ⚠ Failed to restart {label}: {stderr}\n"
-                    f"    Recover manually: launchctl kickstart -k {domain}/{label}"
+                    f"  ⚠ 重启失败：{label}: {stderr}\n"
+                    f"    请手动恢复：launchctl kickstart -k {domain}/{label}"
                 )
                 continue
             if _wait_for_launchd_service_pid(label, old_pid=old_pid, timeout=15.0, domain=domain):
@@ -1090,12 +1090,12 @@ def _restart_macos_launchd_gateways(
             else:
                 failed_or_stale_units.append(label)
                 print(
-                    f"  ✗ {label} failed to come back after restart.\n"
-                    f"    Check logs, then: launchctl kickstart -k {domain}/{label}"
+                    f"  ✗ {label} 重启后未能恢复运行。\n"
+                    f"    请检查日志，然后执行：launchctl kickstart -k {domain}/{label}"
                 )
         except subprocess.TimeoutExpired:
             failed_or_stale_units.append(label)
-            print(f"  ⚠ launchctl timed out restarting {label}; continuing with remaining gateways")
+            print(f"  ⚠ launchctl 重启超时：{label}；继续处理其余网关")
 
 
 def _surviving_gateway_pids_after_failed_restart():
@@ -1190,14 +1190,14 @@ def _warn_gateway_restart_phase_aborted(exc: BaseException, pids) -> None:
     pulled checkout) erased every drain/restart line from the update output.
     """
     print()
-    print(f"⚠ Update incomplete — gateway auto-restart failed: {exc}")
+    print(f"⚠ 更新未完成 —— 网关自动重启失败：{exc}")
     if pids:
         listed = ", ".join(str(pid) for pid in pids)
-        print(f"  Gateway process(es) still running pre-update code: {listed}")
+        print(f"  仍有网关进程在运行更新前的代码：{listed}")
     else:
-        print("  Any gateway still running is serving pre-update code")
-        print("  (mixed sys.modules) against the updated checkout.")
-    print("  Restart it manually, then verify:")
+        print("  仍在运行的网关提供的是更新前的代码")
+        print("  （sys.modules 混杂），与已更新的代码树不一致。")
+    print("  请手动重启，然后验证：")
     print("    hermes gateway restart")
     print("    hermes gateway status")
 
@@ -1223,7 +1223,7 @@ def _drain_or_signal_gateway_for_update(pid: int, drain_budget: float, label: st
     )
     if _is_pid_ancestor_of_current_process(pid):
         print(
-            f"  → {label}: update is running inside this gateway's "
+            f"  → {label}: update 正在该网关的 "
             "process tree — signalling restart and letting the gateway "
             "drain itself (avoids the cron-update deadlock, #100179)"
         )
@@ -1373,27 +1373,27 @@ def _restart_one_systemd_gateway_unit(
         _restart_sec = _service_restart_sec(scope_cmd, svc_name, default=0.0)
         if _manage_cmd is None and _restart_sec > 5.0:
             print(
-                f"  → {svc_name}: waiting for systemd "
-                f"auto-restart (~{int(_restart_sec)}s; "
-                "no root for an immediate restart)..."
+                f"  → {svc_name}: 等待 systemd "
+                f"自动重启（约 {int(_restart_sec)} 秒；"
+                "无 root 权限无法立即重启）……"
             )
         if _wait_for_service_active(scope_cmd, svc_name, timeout=max(10.0, _restart_sec + 10.0)):
             restarted_services.append(svc_name)
             return
         # Exited but not respawned (older unit without Restart=on-failure /
         # RestartForceExitStatus=75); fall through to forced restart.
-        print(f"  ⚠ {svc_name} drained but didn't relaunch — forcing restart")
+        print(f"  ⚠ {svc_name} 已排空但未重新启动 —— 强制重启")
 
     # Forcing needs manage-units privileges; without a non-interactive path
     # polkit would prompt inside the captured subprocess — skip, instruct.
     if _manage_cmd is None:
         failed_or_stale_units.append(svc_name)
         print(
-            f"  ⚠ {svc_name} is a system service and restarting it needs root.\n"
-            f"    Restart it manually to load the new version:\n"
+            f"  ⚠ {svc_name} 是系统服务，重启需要 root 权限。\n"
+            f"    请手动重启以加载新版本：\n"
             f"      sudo systemctl restart {svc_name}\n"
-            f"    To let `hermes update` restart it automatically, allow\n"
-            f"    passwordless sudo for systemctl, or run updates with sudo."
+            f"    若要让 `hermes update` 自动重启它，请\n"
+            f"    为 systemctl 配置免密 sudo，或使用 sudo 运行更新。"
         )
         return
 
@@ -1402,7 +1402,7 @@ def _restart_one_systemd_gateway_unit(
     restart = _systemctl_reset_and_restart(_manage_cmd, svc_name, scope_cmd=scope_cmd)
     if restart.returncode != 0:
         failed_or_stale_units.append(svc_name)
-        print(f"  ⚠ Failed to restart {svc_name}: {restart.stderr.strip()}")
+        print(f"  ⚠ 重启失败：{svc_name}: {restart.stderr.strip()}")
         return
     # restart returns 0 even if the new process crashes at once — verify.
     if _wait_for_service_active(scope_cmd, svc_name, timeout=10.0):
@@ -1410,19 +1410,19 @@ def _restart_one_systemd_gateway_unit(
         return
     # Retry once — transient startup failures (stale module cache,
     # import race) often clear; reset-failed so the retry isn't blocked.
-    print(f"  ⚠ {svc_name} died after restart, retrying...")
+    print(f"  ⚠ {svc_name} 重启后退出，正在重试……")
     _systemctl_reset_and_restart(_manage_cmd, svc_name, scope_cmd=scope_cmd)
     if _wait_for_service_active(scope_cmd, svc_name, timeout=10.0):
         restarted_services.append(svc_name)
-        print(f"  ✓ {svc_name} recovered on retry")
+        print(f"  ✓ {svc_name} 重试后已恢复")
         return
     failed_or_stale_units.append(svc_name)
     _scope_flag = "--user " if scope == "user" else ""
     _sudo_hint = "sudo " if scope == "system" else ""
     print(
-        f"  ✗ {svc_name} failed to stay running after restart.\n"
-        f"    Check logs: {_sudo_hint}journalctl {_scope_flag}-u {svc_name} --since '2 min ago'\n"
-        f"    Recover manually:\n"
+        f"  ✗ {svc_name} 重启后未能保持运行。\n"
+        f"    请检查日志：{_sudo_hint}journalctl {_scope_flag}-u {svc_name} --since '2 min ago'\n"
+        f"    请手动恢复：\n"
         f"      {_sudo_hint}systemctl {_scope_flag}reset-failed {svc_name}\n"
         f"      {_sudo_hint}systemctl {_scope_flag}restart {svc_name}"
     )
@@ -1444,9 +1444,9 @@ def _restart_systemd_gateway_units(restarted_services, failed_or_stale_units, re
     def _on_list_timeout(scope: str, exc: subprocess.TimeoutExpired) -> None:
         # Discovery timeout — skip this scope, keep the other.
         print(
-            f"  ⚠ systemctl timed out listing {scope}-scope "
-            f"gateway units ({exc.cmd if exc.cmd else 'unknown command'}). "
-            f"Check the gateway with: hermes gateway status"
+            f"  ⚠ systemctl 列出超时：{scope}-scope "
+            f"网关单元（{exc.cmd if exc.cmd else '未知命令'}). "
+            f"请用以下命令检查网关：hermes gateway status"
         )
 
     def _on_unit_timeout(svc_name: str, exc: subprocess.TimeoutExpired) -> None:
@@ -1455,9 +1455,9 @@ def _restart_systemd_gateway_units(restarted_services, failed_or_stale_units, re
         failed_or_stale_units.append(svc_name)
         print(
             # See #68523.
-            f"  ⚠ systemctl timed out restarting {svc_name} "
-            f"({exc.cmd if exc.cmd else 'unknown command'}); "
-            f"continuing with remaining gateways"
+            f"  ⚠ systemctl 重启超时：{svc_name} "
+            f"({exc.cmd if exc.cmd else '未知命令'}); "
+            f"继续处理其余网关"
         )
 
     for scope, scope_cmd, result in _systemd_gateway_unit_listings(_on_list_timeout):
@@ -1545,7 +1545,7 @@ def _restart_manual_gateways(out: _GatewayRestartOutcome, _drain_budget) -> None
     # the unmapped sweep below stops them and lists them under "Restart manually".
     # These must NOT be left running: their modules are the pre-update ones and every lazy import from here
     # on mixes versions against the new code on disk (#88654). Handing them to the unmapped sweep below
-    # stops them and surfaces them in the "Stopped N manual gateway process(es) / Restart manually" summary,
+    # stops them and surfaces them in the "Stopped N 个手动管理的网关进程 / Restart manually" summary,
     # which is the contract already used for gateways with no profile mapping.
     unrestartable_pids = set()
     for pid, proc in profile_processes.items():
@@ -1553,9 +1553,9 @@ def _restart_manual_gateways(out: _GatewayRestartOutcome, _drain_budget) -> None
         if restart_mode is None:
             # A bare ``continue`` here left it serving stale modules with no signal.
             print(
-                f"  ⚠ {proc.profile}: could not arm an automatic "
-                f"gateway restart for PID {pid} — stopping it instead "
-                "so it cannot keep running pre-update code"
+                f"  ⚠ {proc.profile}：无法自动重启 "
+                f"PID {pid} —— 改为停止它，"
+                "以免它继续运行更新前的代码"
             )
             unrestartable_pids.add(pid)
             continue
@@ -1586,18 +1586,18 @@ def _restart_manual_gateways(out: _GatewayRestartOutcome, _drain_budget) -> None
     if out.restarted_services or out.killed_pids:
         print()
         for svc in out.restarted_services:
-            print(f"  ✓ Restarted {svc}")
+            print(f"  ✓ 已重启 {svc}")
         if out.relaunched_profiles:
-            print(f"  ✓ Restarting manual gateway profile(s): {', '.join(out.relaunched_profiles)}")
+            print(f"  ✓ 正在重启手动管理的网关 profile：{', '.join(out.relaunched_profiles)}")
         if out.externally_supervised_profiles:
             names = ", ".join(out.externally_supervised_profiles)
-            print(f"  ✓ Handed gateway profile(s) back to their external supervisor: {names}")
+            print(f"  ✓ 已将网关 profile 交回其外部监管进程：{names}")
         unmapped_count = (len(out.killed_pids) - len(out.relaunched_profiles) - len(out.externally_supervised_profiles))
         if unmapped_count:
-            print(f"  → Stopped {unmapped_count} manual gateway process(es)")
-            print("    Restart manually: hermes gateway run")
+            print(f"  → 已停止 {unmapped_count} 个手动管理的网关进程")
+            print("    请手动重启：hermes gateway run")
             if unmapped_count > 1:
-                print("    (or: hermes -p <profile> gateway run  for each profile)")
+                print("    （或：每个 profile 执行 hermes -p <profile> gateway run）")
 
 
 def _force_kill_stuck_gateways(killed_pids) -> None:
@@ -1616,7 +1616,7 @@ def _force_kill_stuck_gateways(killed_pids) -> None:
         _stuck = [pid for pid in _surviving if pid in killed_pids]
         if _stuck:
             print()
-            print(f"  ⚠ {len(_stuck)} gateway process(es) ignored SIGTERM — force-killing")
+            print(f"  ⚠ {len(_stuck)} 个网关进程忽略了 SIGTERM —— 强制终止")
             from gateway.status import get_process_start_time, terminate_pid
             for pid in _stuck:
                 with suppress(ProcessLookupError, PermissionError, OSError):
@@ -1795,18 +1795,18 @@ def _print_legacy_units_warning() -> None:
     if not (supports_systemd_services() and has_legacy_hermes_units()):
         return
     print()
-    print("⚠ Legacy Hermes gateway unit(s) detected:")
+    print("⚠ 检测到旧版 Hermes 网关单元：")
     for name, path, is_sys in _find_legacy_hermes_units():
         scope = "system" if is_sys else "user"
-        print(f"    {path}  ({scope} scope)")
+        print(f"    {path}  （{scope} 作用域）")
     print()
-    print("  These pre-rename units (hermes.service) fight the current")
-    print("  hermes-gateway.service for the bot token and cause SIGTERM")
-    print("  flap loops. Remove them with:")
+    print("  这些改名前遗留的单元（hermes.service）会与当前的")
+    print("  hermes-gateway.service 争抢 bot token，导致 SIGTERM")
+    print("  反复重启。请用以下命令移除：")
     print()
     print("    hermes gateway migrate-legacy")
     print()
-    print("  (add `sudo` if any are in system scope)")
+    print("  （若有系统级单元，请加 `sudo`）")
 
 
 def _collect_fleet_snapshot(restart, rows_expected: bool) -> list:
@@ -1908,8 +1908,8 @@ def _verify_fleet_after_update(restart, *, _pre_update_plan, _windows_gateway_re
             _warn_stale_serve_runtimes(_stale_serve_rows)
 
     print()
-    print("Tip: You can now select a provider and model:")
-    print("  hermes model              # Select provider and model")
+    print("提示：现在可以选择提供方和模型了：")
+    print("  hermes model              # 选择提供方和模型")
 
     # Compare every live gateway's stamped code_sha against the fresh checkout
     # instead of assuming the restart phase worked.
@@ -1945,8 +1945,8 @@ def _verify_fleet_after_update(restart, *, _pre_update_plan, _windows_gateway_re
                 # Every failure path inside collect_fleet_versions() is swallowed via logger.debug(), so an
                 # empty list is indistinguishable from a healthy fleet in the current output. Treat it as
                 # verification failure so the receipt records "partial" and the exit code is 1 (#93406).
-                "\n⚠ Fleet version check returned no rows even though"
-                " gateway runtimes were expected — verification incomplete."
+                "\n⚠ 尽管预期存在网关运行时，版本检查却未返回任何记录"
+                " —— 验证不完整。"
             )
             restart.incomplete = True
 

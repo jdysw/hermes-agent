@@ -734,7 +734,7 @@ def test_cli_pin_refuses_bundled_skill(curator_env, capsys):
     rc = cli._cmd_pin(_A())
     captured = capsys.readouterr()
     assert rc == 1
-    assert "bundled" in captured.out.lower() or "hub" in captured.out.lower()
+    assert "内置" in captured.out or "技能中心" in captured.out
 
 
 # ---------------------------------------------------------------------------

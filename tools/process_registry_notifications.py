@@ -27,9 +27,9 @@ class ProcessNotificationBatch:
             return None
         if len(messages) == 1:
             return messages[0]
-        header = (f"[IMPORTANT: {len(messages)} background processes completed. "
-                  "Treat these results as one batch and give one consolidated response; "
-                  "preserve failures and actionable results.]")
+        header = (f"[IMPORTANT: {len(messages)} 个后台进程已完成。"
+                  "请把这些结果合并为一批处理，只给出一份合并后的回复；"
+                  "不要遗漏失败项和需要采取行动的结果。]")
         return "\n\n".join((header, *messages))
 
     def display_text(self, registry) -> str:
@@ -384,7 +384,7 @@ def _delegation_attribution_line(evt: dict) -> "str | None":
         info = get_subagent_attribution(task_id)
     if not info:
         # Registry entry aged out — still attribute generically, not anonymously.
-        return f"Started by subagent {task_id} (delegate_task)."
+        return f"由子代理 {task_id} (delegate_task)."
     goal, deleg = str(info.get("goal") or "").strip(), info.get("delegation_id")
     goal = goal[:117] + "..." if len(goal) > 120 else goal
     return (f"Started by subagent {task_id}" + (f" of delegation {deleg}" if deleg else "") + "."
@@ -394,8 +394,8 @@ def _delegation_attribution_line(evt: dict) -> "str | None":
 def _completion_status(evt: dict) -> str:
     reason = evt.get("completion_reason") or "exited"
     if reason == "killed":
-        return f"terminated by {evt.get('termination_source') or 'Hermes'}"
-    return _REASON_STATUS.get(reason) or ("completed normally" if evt.get("exit_code", "?") == 0 else "exited")
+        return "被 %s 终止" % (evt.get("termination_source") or "Hermes")
+    return _REASON_STATUS.get(reason) or ("已正常结束" if evt.get("exit_code", "?") == 0 else "已退出")
 
 
 def format_process_notification(evt: dict) -> "str | None":
@@ -422,10 +422,11 @@ def format_process_notification(evt: dict) -> "str | None":
             f"{attribution}Command: {_cmd}\nOutput since last heartbeat:\n{_out}]")
     if evt_type == "watch_match":
         _sup = evt.get("suppressed", 0)
+        _pat = evt.get("pattern", "?")
         return (
-            f"[IMPORTANT: Background process {_sid} matched watch pattern \"{evt.get('pattern', '?')}\".\n"
-            f"{attribution}Command: {_cmd}\nMatched output:\n{evt.get('output', '')}"
-            + (f"\n({_sup} earlier matches were suppressed by rate limit)" if _sup else "") + "]")
+            f"[IMPORTANT: 后台进程 {_sid} 命中了监视模式 {_pat!r}。\n"
+            f"{attribution}命令：{_cmd}\n命中输出：\n{evt.get('output', '')}"
+            + (f"\n（另有 {_sup} 次命中因限流被抑制）" if _sup else "") + "]")
     _exit = evt.get("exit_code", "?")
     _out = evt.get("output", "")
     _signal = ", SIGTERM" if _exit in {-15, 143, "-15", "143"} else ""
@@ -433,13 +434,13 @@ def format_process_notification(evt: dict) -> "str | None":
     # a raw wall in the parent — trim hard but keep enough tail to recognise failures.
     if _attribution and isinstance(_out, str) and len(_out) > 600:
         _out = (
-            "...(output trimmed — subagent-owned process; see the "
-            "delegation's live transcript for full output)\n"
+            "...(输出已裁剪 —— 该进程由子代理持有；完整输出请见"
+            "该委派任务的实时记录)\n"
             + _out[-600:])
     elif evt.get("output_cut"):
         # Say so where the output is the payload (a teammate's reply): a silent tail reads as whole.
         _out = (f"...(first {evt['output_cut']} characters cut — process(action=\"log\", "
                 f"session_id=\"{_sid}\") has the full output)\n{_out}")
     return (
-        f"[IMPORTANT: Background process {_sid} {_completion_status(evt)} (exit code {_exit}{_signal}).\n"
-        f"{attribution}Command: {_cmd}\nOutput:\n{_out}]")
+        f"[IMPORTANT: 后台进程 {_sid} {_completion_status(evt)}（退出码 {_exit}{_signal}）。\n"
+        f"{attribution}命令：{_cmd}\n输出：\n{_out}]")

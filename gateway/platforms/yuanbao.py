@@ -1018,7 +1018,7 @@ class OwnerCommandMiddleware(InboundMiddleware):
         if matched_cmd and not is_owner:
             logger.info("[%s] Reject non-owner slash command: chat=%s from=%s cmd=%s", adapter.name, ctx.chat_id, ctx.from_account, matched_cmd)
             adapter._track_task(asyncio.create_task(
-                adapter.send(ctx.chat_id, f"⚠️ {matched_cmd} is only available to the creator in private chat mode"),
+                adapter.send(ctx.chat_id, f"⚠️ {matched_cmd} 仅在私聊模式下对创建者可用"),
                 name=f"yuanbao-owner-cmd-denial-{matched_cmd}"))
             return  # Stop pipeline
         if matched_cmd and is_owner and cmd_line:
@@ -2550,13 +2550,21 @@ class MessageSender:
 
     @staticmethod
     def strip_cron_wrapper(content: str) -> str:
-        """Strip the scheduler's cron header/footer wrapper; unchanged when the shape doesn't match."""
-        if not content.startswith("Cronjob Response: "):
+        """Strip the scheduler's cron header/footer wrapper; unchanged when the shape doesn't match.
+
+        Accepts both the English and the localized (zh) frame: old deliveries in history keep the
+        English shape, so dropping it would regress on them.
+        """
+        headers = ("Cronjob Response: ", "Cronjob 回复：")
+        if not content.startswith(headers):
             return content
         divider = "\n-------------\n\n"
-        footer_prefix = '\n\nTo stop or manage this job, send me a new message (e.g. "stop reminder '
+        footer_prefixes = (
+            '\n\nTo stop or manage this job, send me a new message (e.g. "stop reminder ',
+            "\n\n要停止或管理该任务，请给我发条新消息 ",
+        )
         divider_pos = content.find(divider)
-        footer_pos = content.rfind(footer_prefix)
+        footer_pos = max((content.rfind(p) for p in footer_prefixes), default=-1)
         if divider_pos < 0 or footer_pos < 0 or footer_pos <= divider_pos or "\n(job_id: " not in content[:divider_pos]:
             return content
         return content[divider_pos + len(divider):footer_pos].strip() or content

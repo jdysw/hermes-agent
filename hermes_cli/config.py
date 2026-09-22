@@ -450,15 +450,15 @@ def format_docker_update_message() -> str:
     return _DOCKER_UPDATE_MESSAGE
 
 
-def format_managed_message(action: str = "modify this Hermes installation") -> str:
+def format_managed_message(action: str = "修改此 Hermes 安装") -> str:
     """Build a user-facing error for managed installs."""
-    managed_system = get_managed_system() or "a package manager"
+    managed_system = get_managed_system() or "某个包管理器"
     return (
-        f"Cannot {action}: this Hermes installation is managed by {managed_system}.\n"
-        "Use your package manager to upgrade or reinstall Hermes.")
+        f"无法{action}：此 Hermes 安装由 {managed_system} 托管。\n"
+        "请使用你的包管理器升级或重新安装 Hermes。")
 
 
-def managed_error(action: str = "modify configuration"):
+def managed_error(action: str = "修改配置"):
     """Print user-friendly error for managed mode."""
     print(format_managed_message(action), file=sys.stderr)
 
@@ -1361,7 +1361,7 @@ def _prompt_and_save_env(name: str, info: Dict[str, Any], prompt: str, results: 
         return False
     save_env_value(name, value)
     results["env_added"].append(name)
-    print(f"  ✓ Saved {name}")
+    print(f"  ✓ 已保存 {name}")
     return True
 
 
@@ -1384,7 +1384,7 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
     try:
         fixes = sanitize_env_file()
         if fixes and not quiet:
-            print(f"  ✓ Normalized .env line formatting ({fixes} line(s) changed)")
+            print(f"  ✓ 已规范化 .env 行格式（{fixes} 行有改动）")
     except Exception:
         pass  # best-effort; never block migration on sanitize failure
 
@@ -1417,18 +1417,18 @@ def migrate_config(interactive: bool = True, quiet: bool = False) -> Dict[str, A
     _warn_invalid_platform_toolsets(results, quiet)
 
     if current_ver < latest_ver and not quiet and not floor_refused:
-        print(f"Config version: {current_ver} → {latest_ver}")
+        print(f"配置版本：{current_ver} → {latest_ver}")
 
     missing_env = get_missing_env_vars(required_only=True)
     if missing_env and not quiet:
-        print("\n⚠️  Missing required environment variables:")
+        print("\n⚠️  缺少必需的环境变量：")
         for var in missing_env:
-            print(f"   • {var['name']}: {var['description']}")
+            print(f"   • {var['name']}：{var['description']}")
     if interactive and missing_env:
-        print("\nLet's configure them now:\n")
+        print("\n现在就来配置它们：\n")
         for var in missing_env:
             if var.get("url"):
-                print(f"  Get your key at: {var['url']}")
+                print(f"  获取密钥：{var['url']}")
             if not _prompt_and_save_env(var["name"], var, f"  {var['prompt']}: ", results):
                 results["warnings"].append(f"Skipped {var['name']} - some features may not work")
             print()
@@ -1476,7 +1476,7 @@ def _disable_suspicious_mcp_servers(results: Dict[str, Any], quiet: bool) -> Non
         if not quiet:
             for issue in issues:
                 print(f"  ⚠ {issue}")
-            print(f"  ⚠ Disabled MCP server '{server_name}' pending review")
+            print(f"  ⚠ 已禁用 MCP 服务器 '{server_name}'，等待审核")
     if mcp_touched:
         config["mcp_servers"] = raw_mcp_servers
         _persist_migration(config)
@@ -1506,7 +1506,7 @@ def _offer_list(heading: str, items: List[str], question: str) -> bool:
         print(f"    • {item}")
     print()
     if not _ask_yes_no(question):
-        print("  Set later with: hermes config set <key> <value>")
+        print("  稍后可设置：hermes config set <key> <value>")
         return False
     print()
     return True
@@ -1529,7 +1529,7 @@ def _offer_new_optional_env_vars(current_ver: int, latest_ver: int, results: Dic
     for name, info in new_and_unset:
         print(f"  {info.get('description', name)}")
         if info.get("url"):
-            print(f"  Get your key at: {info['url']}")
+            print(f"  获取密钥：{info['url']}")
         _prompt_and_save_env(name, info, f"  {info.get('prompt', name)} (Enter to skip): ", results)
         print()
 
@@ -1553,7 +1553,7 @@ def _offer_skill_config_vars(missing_skill_config: List[Dict[str, Any]], results
         if value:
             _set_nested(config, f"{SKILL_CONFIG_PREFIX}.{var['key']}", value)
             results["config_added"].append(var["key"])
-            print(f"  ✓ Saved {var['key']} = {value}")
+            print(f"  ✓ 已保存 {var['key']} = {value}")
         else:
             results["warnings"].append(
                 f"Skipped {var['key']} — skill '{var.get('skill', '?')}' may ask for it later")
@@ -2396,8 +2396,8 @@ def _strip_managed_keys_for_save(config: Dict[str, Any]) -> Dict[str, Any]:
     config, _stripped = _strip_dotted_keys(copy.deepcopy(config), managed_keys)
     if _stripped:
         print(
-            f"Note: {len(_stripped)} managed setting(s) were not saved "
-            f"(managed by your administrator): {', '.join(sorted(_stripped))}", file=sys.stderr)
+            f"注意：{len(_stripped)} 个由管理员托管的设置项未被保存 "
+            f"（由你的管理员托管）：{', '.join(sorted(_stripped))}", file=sys.stderr)
     return config
 
 
@@ -2423,7 +2423,7 @@ def save_config(
     under *config* so partial callers cannot drop sections they omitted."""
     with _CONFIG_LOCK:
         if is_managed():
-            managed_error("save configuration")
+            managed_error("保存配置")
             return
 
         config = _strip_managed_keys_for_save(config)
@@ -2552,13 +2552,13 @@ def _check_non_ascii_credential(key: str, value: str) -> str:
     sanitized = value.encode("ascii", errors="ignore").decode("ascii")
 
     print(
-        f"\n  Warning: {key} contains non-ASCII characters that will break API requests.\n"
-        f"  This usually happens when copy-pasting from a PDF, rich-text editor,\n"
-        f"  or web page that substitutes lookalike Unicode glyphs for ASCII letters.\n\n"
+        f"\n  警告：{key} 含非 ASCII 字符，会导致 API 请求失败。\n"
+        f"  这通常发生在从 PDF、富文本编辑器或网页复制粘贴时——\n"
+        f"  它们会用形近的 Unicode 字形替换 ASCII 字母。\n\n"
         + "\n".join(f"  {line}" for line in bad_chars[:5])
-        + ("\n  ... and more" if len(bad_chars) > 5 else "")
-        + "\n\n  The non-ASCII characters have been stripped automatically.\n"
-        "  If authentication fails, re-copy the key from the provider's dashboard.\n",
+        + ("\n  …… 以及更多" if len(bad_chars) > 5 else "")
+        + "\n\n  这些非 ASCII 字符已被自动剔除。\n"
+        "  若认证仍失败，请从提供方控制台重新复制密钥。\n",
         file=sys.stderr)
     return sanitized
 
@@ -2635,8 +2635,8 @@ def _env_write_blocked(key: str, action: str) -> bool:
 
     if managed_scope.is_env_managed(key):
         print(
-            f"Cannot {action} {key}: it is managed by your administrator ({_managed_source('.env')}) "
-            f"and cannot be changed.", file=sys.stderr)
+            f"无法{action} {key}：该项由你的管理员托管（{_managed_source('.env')}），"
+            f"不可修改。", file=sys.stderr)
         return True
     return False
 
@@ -2798,7 +2798,7 @@ def get_env_value_prefer_dotenv(key: str) -> Optional[str]:
 def redact_key(key: str) -> str:
     """Redact an API key for display."""
     from agent.redact import mask_secret
-    return mask_secret(key, empty=color("(not set)", Colors.DIM))
+    return mask_secret(key, empty=color("（未设置）", Colors.DIM))
 
 
 # Key names (case-insensitive, exact match) whose VALUE is a credential and must be masked
@@ -2859,11 +2859,11 @@ def _show_managed_banner() -> None:
         return
     print()
     print(color(
-        f"  ⚷ Some settings are managed by your administrator ({managed_scope.get_managed_dir()}) "
-        f"and cannot be changed", Colors.YELLOW, Colors.BOLD))
+        f"  ⚷ 部分设置由你的管理员托管（{managed_scope.get_managed_dir()}），"
+        f"不可修改", Colors.YELLOW, Colors.BOLD))
     for label, keys in (("config", managed_keys), ("env", managed_env)):
         if keys:
-            print(color(f"    Managed {label} keys: {', '.join(sorted(keys))}", Colors.YELLOW))
+            print(color(f"    管理员托管的 {label} 键：{', '.join(sorted(keys))}", Colors.YELLOW))
 
 
 _SHOW_CONFIG_API_KEYS = (
@@ -2881,9 +2881,9 @@ _SHOW_CONFIG_API_KEYS = (
 
 def _show_model_section(config: Dict[str, Any]) -> None:
     _section("Model")
-    print(f"  Model:        {redact_config_value(config.get('model', 'not set'))}")
+    print(f"  模型：        {redact_config_value(config.get('model', '未设置'))}")
     cfg_max_turns = config.get('agent', {}).get('max_turns', DEFAULT_CONFIG['agent']['max_turns'])
-    print(f"  Max turns:    {cfg_max_turns}")
+    print(f"  最大轮数：    {cfg_max_turns}")
     # Read the .env FILE directly so a stale HERMES_MAX_ITERATIONS ghost is caught even when the
     # gateway bridge already overrode os.environ.
     try:
@@ -2891,8 +2891,8 @@ def _show_model_section(config: Dict[str, Any]) -> None:
     except Exception:
         env_ghost = None
     if env_ghost is not None and str(env_ghost).strip() != str(cfg_max_turns).strip():
-        print(color(f"                ⚠ .env has stale HERMES_MAX_ITERATIONS={env_ghost} "
-                    f"(run 'hermes doctor --fix' to remove)", Colors.YELLOW))
+        print(color(f"                ⚠ .env 中存在失效的 HERMES_MAX_ITERATIONS={env_ghost} "
+                    f"（运行 'hermes doctor --fix' 可移除）", Colors.YELLOW))
 
 
 def _show_display_section(config: Dict[str, Any]) -> None:
@@ -2904,24 +2904,24 @@ def _show_display_section(config: Dict[str, Any]) -> None:
     except Exception:
         active_personality = display.get('personality') or 'none'
     on_off = lambda flag: 'on' if flag else 'off'  # noqa: E731
-    print(f"  Personality:  {active_personality}")
-    print(f"  Reasoning:    {on_off(display.get('show_reasoning', True))}")
+    print(f"  人格：        {active_personality}")
+    print(f"  推理：        {on_off(display.get('show_reasoning', True))}")
     print(
-        f"  Bell:         complete={on_off(display.get('bell_on_complete', False))}, "
+        f"  提示音：      complete={on_off(display.get('bell_on_complete', False))}, "
         f"prompt={on_off(display.get('bell_on_prompt', False))}")
     ump = display.get('user_message_preview', {})
     ump = ump if isinstance(ump, dict) else {}
-    print(f"  User preview: first {ump.get('first_lines', 2)} line(s), last {ump.get('last_lines', 2)} line(s)")
+    print(f"  用户预览：    前 {ump.get('first_lines', 2)} 行，后 {ump.get('last_lines', 2)} 行")
 
 
 def _show_terminal_section(config: Dict[str, Any]) -> None:
     _section("Terminal")
     terminal = config.get('terminal', {})
-    print(f"  Backend:      {terminal.get('backend', 'local')}")
-    print(f"  Working dir:  {terminal.get('cwd', '.')}")
-    print(f"  Timeout:      {terminal.get('timeout', 60)}s")
+    print(f"  后端：        {terminal.get('backend', 'local')}")
+    print(f"  工作目录：    {terminal.get('cwd', '.')}")
+    print(f"  超时：        {terminal.get('timeout', 60)} 秒")
 
-    configured = lambda *names: 'configured' if all(get_env_value(n) for n in names) else '(not set)'  # noqa: E731
+    configured = lambda *names: '已配置' if all(get_env_value(n) for n in names) else '（未设置）'  # noqa: E731
     default_img = 'nikolaik/python-nodejs:python3.11-nodejs20'
     backend_lines = {
         'docker': lambda: [f"  Docker image: {terminal.get('docker_image', default_img)}"],
@@ -2934,11 +2934,11 @@ def _show_terminal_section(config: Dict[str, Any]) -> None:
             f"  API key:      {configured('DAYTONA_API_KEY')}"],
         'vercel_sandbox': lambda: [
             f"  Vercel runtime: {terminal.get('vercel_runtime', 'node24')}",
-            f"  Vercel auth:    {'configured' if get_env_value('VERCEL_OIDC_TOKEN') or (get_env_value('VERCEL_TOKEN') and get_env_value('VERCEL_PROJECT_ID') and get_env_value('VERCEL_TEAM_ID')) else '(not set)'}",
+            f"  Vercel 认证：  {'已配置' if get_env_value('VERCEL_OIDC_TOKEN') or (get_env_value('VERCEL_TOKEN') and get_env_value('VERCEL_PROJECT_ID') and get_env_value('VERCEL_TEAM_ID')) else '（未设置）'}",
         ],
         'ssh': lambda: [
-            f"  SSH host:     {get_env_value('TERMINAL_SSH_HOST') or '(not set)'}",
-            f"  SSH user:     {get_env_value('TERMINAL_SSH_USER') or '(not set)'}"]}
+            f"  SSH 主机：    {get_env_value('TERMINAL_SSH_HOST') or '(not set)'}",
+            f"  SSH 用户：    {get_env_value('TERMINAL_SSH_USER') or '(not set)'}"]}
     for line in backend_lines.get(terminal.get('backend'), list)():
         print(line)
 
@@ -2947,24 +2947,24 @@ def _show_compression_section(config: Dict[str, Any]) -> None:
     _section("Context Compression")
     compression = config.get('compression', {})
     enabled = compression.get('enabled', True)
-    print(f"  Enabled:      {'yes' if enabled else 'no'}")
+    print(f"  已启用：      {'是' if enabled else '否'}")
     if not enabled:
         return
-    print(f"  Threshold:    {compression.get('threshold', 0.50) * 100:.0f}%")
+    print(f"  阈值：        {compression.get('threshold', 0.50) * 100:.0f}%")
     tt = compression.get('threshold_tokens')
     try:
         if tt is not None and int(tt) > 0:
-            print(f"  Token cap:    {int(tt):,} tokens (takes lower of ratio vs absolute)")
+            print(f"  token 上限：  {int(tt):,} 个 token（取比例与绝对值中的较小者）")
     except (TypeError, ValueError):
         pass
-    print(f"  Target ratio: {compression.get('target_ratio', 0.20) * 100:.0f}% of threshold preserved")
-    print(f"  Protect last: {compression.get('protect_last_n', 20)} messages")
-    print(f"  Protect first: {compression.get('protect_first_n', 3)} non-system head messages")
+    print(f"  目标比例：    {compression.get('target_ratio', 0.20) * 100:.0f}%（保留阈值的该比例）")
+    print(f"  保留末尾：    {compression.get('protect_last_n', 20)} 条消息")
+    print(f"  保留开头：    {compression.get('protect_first_n', 3)} 条非系统头部消息")
     aux_comp = config.get('auxiliary', {}).get('compression', {})
-    print(f"  Model:        {aux_comp.get('model', '') or '(auto)'}")
+    print(f"  模型：        {aux_comp.get('model', '') or '（自动）'}")
     comp_provider = aux_comp.get('provider', 'auto')
     if comp_provider and comp_provider != 'auto':
-        print(f"  Provider:     {comp_provider}")
+        print(f"  提供方：      {comp_provider}")
 
 
 def _show_aux_overrides(config: Dict[str, Any]) -> None:
@@ -2991,7 +2991,7 @@ def _show_skill_settings() -> None:
         _section("Skill Settings")
         for var in skill_vars:
             value = resolved.get(var["key"], "")
-            display_val = str(value) if value else color("(not set)", Colors.DIM)
+            display_val = str(value) if value else color("（未设置）", Colors.DIM)
             skill_tag = color(f"[{var.get('skill', '')}]", Colors.DIM)
             print(f"  {var['key']:<20s} {display_val}  {skill_tag}")
     except Exception:
@@ -3025,7 +3025,7 @@ def show_config():
 
     _section("Timezone")
     tz = config.get('timezone', '')
-    print(f"  Timezone:     {tz or color('(server-local)', Colors.DIM)}")
+    print(f"  时区：        {tz or color('（服务器本地）', Colors.DIM)}")
 
     _show_compression_section(config)
     _show_aux_overrides(config)
@@ -3039,21 +3039,21 @@ def show_config():
 
     print()
     print(color("─" * 60, Colors.DIM))
-    print(color("  hermes config edit     # Edit config file", Colors.DIM))
+    print(color("  hermes config edit     # 编辑配置文件", Colors.DIM))
     print(color("  hermes config set <key> <value>", Colors.DIM))
-    print(color("  hermes setup           # Run setup wizard", Colors.DIM))
+    print(color("  hermes setup           # 运行安装向导", Colors.DIM))
     print()
 
 
 def edit_config():
     """Open config file in user's editor."""
     if is_managed():
-        managed_error("edit configuration")
+        managed_error("编辑配置")
         return
     config_path = get_config_path()
     if not config_path.exists():
         save_config(DEFAULT_CONFIG, strip_defaults=False)
-        print(f"Created {config_path}")
+        print(f"已创建 {config_path}")
 
     # Windows lands on notepad even without Git Bash/nano; POSIX prefers nano/vim, which headless
     # servers are more likely to have.
@@ -3062,11 +3062,11 @@ def edit_config():
     editor = os.getenv('EDITOR') or os.getenv('VISUAL') or next(
         (cmd for cmd in candidates if shutil.which(cmd)), None)
     if not editor:
-        print("No editor found. Config file is at:")
+        print("未找到编辑器。配置文件位于：")
         print(f"  {config_path}")
         return
 
-    print(f"Opening {config_path} in {editor}...")
+    print(f"正在用 {editor} 打开 {config_path}……")
     subprocess.run([editor, str(config_path)])
 
 
@@ -3282,9 +3282,9 @@ def _coerce_config_set_value(key: str, value: str) -> Any:
         # then ignored the value while `config get` echoed it back (#114471). Refuse instead.
         detail = str(getattr(exc, "problem", None) or exc).splitlines()[0]
         _exit_invalid(
-            f"✗ Value for '{key}' looks like a list/mapping but is not valid YAML/JSON "
-            f"({detail}) — nothing was written.\n"
-            "  Fix the literal, or quote it (e.g. \"'[text'\") to store a plain string.")
+            f"✗ '{key}' 的值看起来像列表/映射，但不是合法的 YAML/JSON"
+            f"（{detail}）—— 未写入任何内容。\n"
+            "  请修正该字面量，或用引号包裹（例如 \"'[text'\"）以按普通字符串存储。")
     if isinstance(parsed, (list, dict)):
         return parsed
     # A quoted literal ("'[text'") parses to a scalar: that is the deliberate way to store one.
@@ -3379,7 +3379,7 @@ def _redirect_platform_display_key(key: str) -> tuple[str, Optional[str]]:
     if segs[2] not in _display_keys:
         return key, note
     canonical = f"display.platforms.{segs[1]}.{segs[2]}"
-    return canonical, f"  (note: per-platform display setting — saved as {canonical})"
+    return canonical, f"  （注：按平台的显示设置 —— 已按 {canonical} 保存）"
 
 
 def _legacy_gateway_platforms_key(requested_key: str) -> Optional[str]:
@@ -3399,8 +3399,8 @@ def _exit_if_key_managed(key: str, action: str) -> None:
     .env writers, which carry their own guard."""
     if managed_scope.is_key_managed(key):
         print(
-            f"Cannot {action} '{key}': it is managed by your administrator ({_managed_source('config.yaml')}) "
-            f"and cannot be changed. Contact your administrator to modify it.", file=sys.stderr)
+            f"无法{action} '{key}'：该项由你的管理员托管（{_managed_source('config.yaml')}），"
+            f"不可修改。请联系你的管理员。" , file=sys.stderr)
         sys.exit(1)
 
 
@@ -3414,12 +3414,12 @@ def _guard_section_overwrite(key: str, value: Any, user_config: Dict[str, Any], 
     if key == "model":
         if force:
             print(
-                f"⚠ Replacing entire 'model' section with a scalar "
-                f"(discarding {len(existing)} existing sub-key(s))")
+                f"⚠ 正在用标量替换整个 'model' 段 "
+                f"（将丢弃 {len(existing)} 个已有子键）")
             return key
         print(
-            f"✓ Redirecting bare 'model' to 'model.default' "
-            f"(preserving {len(existing)} existing model sub-key(s))")
+            f"✓ 正在把裸 'model' 重定向到 'model.default' "
+            f"（保留 {len(existing)} 个已有 model 子键）")
         return "model.default"
     if force:
         return key
@@ -3465,19 +3465,19 @@ def _write_user_config(config_path: Path, user_config: Dict[str, Any]) -> None:
 
 def _print_unknown_key_notice(key: str, suggestion: Optional[str]) -> None:
     print(color(
-        f"⚠ '{key}' is not a recognized config key — it was saved anyway, "
-        "but Hermes may not read it.", Colors.YELLOW))
+        f"⚠ '{key}' 不是已识别的配置键 —— 仍然保存了，"
+        "但 Hermes 可能不会读取它。", Colors.YELLOW))
     if suggestion:
-        print(color(f"  Did you mean: {suggestion}", Colors.YELLOW))
+        print(color(f"  你是不是想写：{suggestion}", Colors.YELLOW))
     # The env bridge covers custom TOP-LEVEL keys only; an unseeded nested path (``stt.provider``)
     # is written but not bridged, so the footer would be a false promise there.
     if len(_split_key_path(key)) == 1:
         print(color(
-            "  (Custom top-level keys are supported and bridged to the "
-            "environment for skills/external tools. Use --force to skip "
-            "this notice.)", Colors.DIM))
+            "  （自定义顶层键受支持，并会桥接到环境变量 "
+            "供技能/外部工具使用。用 --force 可跳过 "
+            "此提示。）", Colors.DIM))
     else:
-        print(color("  (Use --force to skip this notice.)", Colors.DIM))
+        print(color("  （用 --force 可跳过此提示。）", Colors.DIM))
 
 
 def _unknown_subkey_refusal(key: str, suggestion: Optional[str]) -> str:
@@ -3497,7 +3497,7 @@ def set_config_value(key: str, value: str, force: bool = False):
     authorizes replacing a mapping section with a scalar. Without it, scalar writes over mappings are refused and bare ``model`` is redirected
     to ``model.default``."""
     if is_managed():
-        managed_error("set configuration values")
+        managed_error("设置配置项")
         return
     # Empty segments (``"agent."``) would write config["agent"][""] into a live schema section.
     if key != key.strip() or not key.strip():
@@ -3513,7 +3513,7 @@ def set_config_value(key: str, value: str, force: bool = False):
         # Unified lifecycle: also rotates any config.yaml mirror of the old value so a stale
         # higher-precedence copy can't win (#62269).
         save_provider_env_credential(key.upper(), value)
-        print(f"✓ Set {key} in {get_env_path()}")
+        print(f"✓ 已设置 {key}（写入 {get_env_path()}）")
         return
     from hermes_cli.config_env_routing import is_env_setting_key, save_env_setting
 
@@ -3587,7 +3587,7 @@ def set_config_value(key: str, value: str, force: bool = False):
         # being silently ignored.
         user_config = _normalize_root_model_keys(user_config)
         key = "model.base_url"
-        print("  (note: 'api_base' is an alias — saved as model.base_url)")
+        print("  （注：'api_base' 是别名 —— 已按 model.base_url 保存）")
     _write_user_config(config_path, user_config)
 
     # Keep .env in sync: terminal_tool reads TERMINAL_ENV etc. directly from env vars.
@@ -3603,7 +3603,7 @@ def set_config_value(key: str, value: str, force: bool = False):
     if _is_secret_config_key(key) and isinstance(value, str) and value:
         from agent.redact import mask_secret
         _display_value = mask_secret(value)
-    print(f"✓ Set {key} = {_display_value} in {config_path}")
+    print(f"✓ 已设置 {key} = {_display_value}（写入 {config_path}）")
     if _route_notice:
         print(_route_notice)
 
@@ -3636,7 +3636,7 @@ def get_config_value(key: str, *, as_json: bool = False, raw: bool = False):
             value = _get_nested(config, legacy_key)
 
     if value is _MISSING:
-        _exit_invalid(f"Config key not set: {key}")
+        _exit_invalid(f"配置项未设置：{key}")
 
     from agent.redact import _redact_enabled, mask_secret
     if not raw and _redact_enabled():
@@ -3669,7 +3669,7 @@ def get_config_value(key: str, *, as_json: bool = False, raw: bool = False):
 def unset_config_value(key: str):
     """Remove a user-set configuration or .env value."""
     if is_managed():
-        managed_error("unset configuration values")
+        managed_error("取消配置项")
         return
     _exit_if_key_managed(key, "unset")
 
@@ -3680,8 +3680,8 @@ def unset_config_value(key: str):
         from hermes_cli.credential_lifecycle import remove_provider_env_credential
 
         if not remove_provider_env_credential(key.upper()).get("found"):
-            _exit_invalid(f"Config key not set: {key}")
-        print(f"✓ Unset {key} from {get_env_path()}")
+            _exit_invalid(f"配置项未设置：{key}")
+        print(f"✓ 已移除 {key}（来自 {get_env_path()}）")
         return
     from hermes_cli.config_env_routing import is_env_setting_key, remove_env_setting
 
@@ -3699,7 +3699,7 @@ def unset_config_value(key: str):
     key, _redirect_note = _redirect_platform_display_key(key)
     if _redirect_note:
         # Mirror set_config_value's display.platforms canonicalization (#71047).
-        print(_redirect_note.replace("saved as", "resolved as"))
+        print(_redirect_note.replace("已按", "已解析为").replace(" 保存）", "）"))
     removed = _unset_nested(user_config, key)
     if legacy_key:
         removed = _unset_nested(user_config, legacy_key) or removed
@@ -3709,10 +3709,10 @@ def unset_config_value(key: str):
         removed = remove_env_value(env_var) or removed
 
     if not removed:
-        _exit_invalid(f"Config key not set: {key}")
+        _exit_invalid(f"配置项未设置：{key}")
 
     _write_user_config(config_path, user_config)
-    print(f"✓ Unset {key} from {config_path}")
+    print(f"✓ 已移除 {key}（来自 {config_path}）")
 
 
 # ---- Command handler ----
@@ -3720,7 +3720,7 @@ def unset_config_value(key: str):
 def _usage_exit(usage: str, examples: List[str], extra: Optional[List[str]] = None) -> None:
     print(usage)
     print()
-    print("Examples:")
+    print("示例：")
     for line in examples:
         print(f"  {line}")
     for line in extra or ():
@@ -3737,15 +3737,15 @@ def _run_write_command(fn, *args) -> None:
         _exit_invalid(f"✗ {exc}")
 
 
-_USAGE_GET = ("Usage: hermes config get <key> [--json] [--raw]", [
+_USAGE_GET = ("用法：hermes config get <key> [--json] [--raw]", [
     "hermes config get model", "hermes config get terminal.backend",
     "hermes config get skills.config --json"], None)
-_USAGE_SET = ("Usage: hermes config set [--force] <key> <value>", [
+_USAGE_SET = ("用法：hermes config set [--force] <key> <value>", [
     "hermes config set model anthropic/claude-sonnet-4", "hermes config set terminal.backend docker",
     "hermes config set OPENROUTER_API_KEY sk-or-..."], [
-    "", "  --force: skip the unknown-key notice for unrecognized keys,",
-    "           and allow a scalar to replace a whole mapping section"])
-_USAGE_UNSET = ("Usage: hermes config unset <key>", [
+    "", "  --force：跳过未识别键的提示，",
+    "           并允许用标量替换整个映射段"])
+_USAGE_UNSET = ("用法：hermes config unset <key>", [
     "hermes config unset model", "hermes config unset terminal.backend",
     "hermes config unset OPENROUTER_API_KEY"], None)
 
@@ -3784,28 +3784,28 @@ def _print_banner(text: str) -> None:
 
 
 def _cmd_config_migrate(args):
-    _print_banner("🔄 Checking configuration for updates...")
+    _print_banner("🔄 正在检查配置更新……")
 
     missing_env = get_missing_env_vars(required_only=False)
     missing_config = get_missing_config_fields()
     current_ver, latest_ver = check_config_version(raise_on_parse_error=True)
 
     if not missing_env and not missing_config and current_ver >= latest_ver:
-        print(color("✓ Configuration is up to date!", Colors.GREEN))
+        print(color("✓ 配置已是最新！", Colors.GREEN))
         print()
         return
 
     if current_ver < latest_ver:
-        print(f"  Config version: {current_ver} → {latest_ver}")
+        print(f"  配置版本：{current_ver} → {latest_ver}")
 
     if missing_config:
-        print(f"\n  {len(missing_config)} new config option(s) will be added with defaults")
+        print(f"\n  将新增 {len(missing_config)} 个配置项并使用默认值")
 
     required_missing = [v for v in missing_env if v.get("is_required")]
     optional_missing = [v for v in missing_env if not v.get("is_required") and not v.get("advanced")]
     for heading, group, suffix in (
-        ("⚠️  {} required API key(s) missing:", required_missing, ""),
-        ("ℹ️  {} optional API key(s) not configured:", optional_missing, " (enables: {})")):
+        ("⚠️  缺少 {} 个必需 API 密钥：", required_missing, ""),
+        ("ℹ️  {} 个可选 API 密钥未配置：", optional_missing, "（可启用：{}）")):
         if group:
             print(f"\n  {heading.format(len(group))}")
             for var in group:
@@ -3815,7 +3815,7 @@ def _cmd_config_migrate(args):
     results = migrate_config(interactive=True, quiet=False)
     print()
     if results["env_added"] or results["config_added"]:
-        print(color("✓ Configuration updated!", Colors.GREEN))
+        print(color("✓ 配置已更新！", Colors.GREEN))
     if results["warnings"]:
         print()
         for warning in results["warnings"]:
@@ -3825,13 +3825,13 @@ def _cmd_config_migrate(args):
 
 def _cmd_config_check(args):
     """Non-interactive report of what's missing."""
-    _print_banner("📋 Configuration Status")
+    _print_banner("📋 配置状态")
 
     current_ver, latest_ver = check_config_version(raise_on_parse_error=True)
     if current_ver >= latest_ver:
-        print(f"  Config version: {current_ver} ✓")
+        print(f"  配置版本：{current_ver} ✓")
     else:
-        print(color(f"  Config version: {current_ver} → {latest_ver} (update available)", Colors.YELLOW))
+        print(color(f"  配置版本：{current_ver} → {latest_ver}（有可用更新）", Colors.YELLOW))
 
     groups = (
         ("Required", REQUIRED_ENV_VARS, lambda n, i: color(f"    ✗ {n} (missing)", Colors.RED)),
@@ -3846,8 +3846,8 @@ def _cmd_config_check(args):
     missing_config = get_missing_config_fields()
     if missing_config:
         print()
-        print(color(f"  {len(missing_config)} new config option(s) available", Colors.YELLOW))
-        print("    Run 'hermes config migrate' to add them")
+        print(color(f"  有 {len(missing_config)} 个新配置项可用", Colors.YELLOW))
+        print("    运行 'hermes config migrate' 以添加")
 
     print()
 
@@ -3864,16 +3864,16 @@ _CONFIG_SUBCOMMANDS = {
     "migrate": _cmd_config_migrate,
     "check": _cmd_config_check}
 
-_CONFIG_USAGE = """Available commands:
-  hermes config           Show current configuration
-  hermes config edit      Open config in editor
-  hermes config get <key>          Print a resolved config value
-  hermes config set <key> <value>   Set a config value
-  hermes config unset <key>        Remove a config value
-  hermes config check     Check for missing/outdated config
-  hermes config migrate   Update config with new options
-  hermes config path      Show config file path
-  hermes config env-path  Show .env file path"""
+_CONFIG_USAGE = """可用命令：
+  hermes config           显示当前配置
+  hermes config edit      在编辑器中打开配置
+  hermes config get <key>          打印解析后的配置值
+  hermes config set <key> <value>   设置配置值
+  hermes config unset <key>        移除配置值
+  hermes config check     检查缺失/过期的配置
+  hermes config migrate   用新选项更新配置
+  hermes config path      显示配置文件路径
+  hermes config env-path  显示 .env 文件路径"""
 
 
 def config_command(args):
@@ -3883,7 +3883,7 @@ def config_command(args):
     if handler is not None:
         handler(args)
         return
-    print(f"Unknown config command: {subcmd}")
+    print(f"未知的配置子命令：{subcmd}")
     print()
     print(_CONFIG_USAGE)
     sys.exit(1)
@@ -3905,8 +3905,8 @@ def _inject_profile_env_vars() -> None:
                 _is_key = not _var.endswith(("_BASE_URL", "_URL"))
                 _label = _pp.display_name or _pp.name
                 OPTIONAL_ENV_VARS[_var] = {
-                    "description": f"{_label} {'API key' if _is_key else 'base URL override'}",
-                    "prompt": f"{_label} {'API key' if _is_key else 'base URL (leave empty for default)'}",
+                    "description": f"{_label} {'API 密钥' if _is_key else 'base URL 覆盖'}",
+                    "prompt": f"{_label} {'API 密钥' if _is_key else 'base URL（留空使用默认）'}",
                     "url": _pp.signup_url or None,
                     "password": _is_key,
                     "category": "provider",

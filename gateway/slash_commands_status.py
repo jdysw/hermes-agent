@@ -172,12 +172,18 @@ def _agents_delegation_lines(d: dict) -> list[str]:
     registry's progress sampler: api calls, current tool, seconds since last activity."""
     goal = _clip(" ".join(str(d.get("goal") or "").split()), 70)
     status = d.get("status", "?")
-    row = f"- `{d.get('delegation_id', '?')}` · {status}"
+    # 状态值是内部标识（逻辑判断仍按英文），仅显示时映射为中文。
+    _status_display = {
+        "running": "运行中", "stalling": "停滞中", "stalled": "已停滞",
+        "finalizing": "收尾中", "done": "已完成", "failed": "失败",
+        "cancelled": "已取消",
+    }.get(status, status)
+    row = f"- `{d.get('delegation_id', '?')}` · {_status_display}"
     quiet = d.get("stalled_after_quiet_seconds")
     if status == "stalling" and quiet is not None:
-        row += f" · no progress {quiet:.0f}s"
+        row += f" · 无进展 {quiet:.0f} 秒"
     elif status != "stalling" and d.get("seconds_since_progress", 0) >= 60:
-        row += f" · quiet {d['seconds_since_progress']:.0f}s"
+        row += f" · 静默 {d['seconds_since_progress']:.0f} 秒"
     if goal:
         row += f" · {goal}"
     lines = [row]
@@ -185,10 +191,10 @@ def _agents_delegation_lines(d: dict) -> list[str]:
         if not isinstance(child, dict):
             continue
         tool = child.get("current_tool")
-        doing = f"`{tool}`" if tool else "between turns"
-        part = f"  - child {i + 1}: {child.get('api_calls', '?')} api calls · {doing}"
+        doing = f"`{tool}`" if tool else "回合间隙"
+        part = f"  - 子代理 {i + 1}：{child.get('api_calls', '?')} 次 API 调用 · {doing}"
         idle = child.get("seconds_since_activity")
-        lines.append(part + (f" · active {idle:.0f}s ago" if idle is not None else ""))
+        lines.append(part + (f" · {idle:.0f} 秒前活跃" if idle is not None else ""))
     return lines
 
 
@@ -495,12 +501,12 @@ class GatewayStatusCommandsMixin:
         if view is None or not view.logged_in:
             return t("gateway.credits.not_logged_in")
         # Drop the helper's 📈 header; we print our own.
-        lines = ["💳 **Nous balance**"] + [ln for ln in view.balance_lines if not ln.lstrip().startswith("📈")]
+        lines = ["💳 **Nous 余额**"] + [ln for ln in view.balance_lines if not ln.lstrip().startswith("📈")]
         if view.identity_line:
             lines += ["", view.identity_line]
         if view.topup_url:
-            lines += ["", f"Manage billing on the portal: {view.topup_url}",
-                      "Top up and manage billing in the browser — your balance updates here after."]
+            lines += ["", f"在门户管理账单：{view.topup_url}",
+                      "在浏览器中充值和管理账单——充值后余额会在这里更新。"]
         return "\n".join(lines)
 
     def _context_breakdown_block(self, agent, source, expanded: bool) -> list[str]:

@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover - dependency gate
 CRYPTO_AVAILABLE = Cipher is not None
 
 from gateway.config import Platform, PlatformConfig
-from gateway.platforms.helpers import MessageDeduplicator, cancel_task, greedy_pack_blocks
+from gateway.platforms.helpers import MessageDeduplicator, cancel_task, greedy_pack_blocks, strip_markdown
 from gateway.platforms.access_policy_mixin import OwnAccessPolicyMixin
 from gateway.platforms.base import (
     _IMAGE_EXTS, _VIDEO_EXTS, gateway_trust_env, BasePlatformAdapter, SendResult,
@@ -296,6 +296,18 @@ async def _get_updates(session: "aiohttp.ClientSession", *, base_url: str, token
 async def _send_items(
     session: "aiohttp.ClientSession", *, base_url: str, token: str, to: str, item_list: List[Dict[str, Any]], context_token: Optional[str], client_id: str,
 ) -> Dict[str, Any]:
+    # 微信客户端不渲染 markdown：出站文本统一清掉 **粗体** / `代码` / # 标题 / [链接](url) 语法，
+    # 让主人看到的是干净正文（表格竖线、emoji、换行不受影响）。改这里 = 一处覆盖全部文本与图注。
+    try:
+        item_list = [
+            {**it, "text_item": {**it["text_item"],
+                                 "text": strip_markdown(it["text_item"]["text"])}}
+            if it.get("type") == ITEM_TEXT and isinstance(it.get("text_item"), dict)
+            and isinstance(it["text_item"].get("text"), str) else it
+            for it in item_list
+        ]
+    except Exception:
+        pass  # 清洗失败绝不阻断发送：原样发出去也比发不出去强
     message: Dict[str, Any] = {
         "from_user_id": "", "to_user_id": to, "client_id": client_id, "message_type": MSG_TYPE_BOT, "message_state": MSG_STATE_FINISH,
         "item_list": item_list}

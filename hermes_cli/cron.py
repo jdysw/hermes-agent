@@ -4,6 +4,7 @@ import contextlib
 import json
 import re
 import sys
+import unicodedata
 from datetime import timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
@@ -72,10 +73,10 @@ def _warn_if_gateway_not_running() -> None:
     """Warn at create/list time when the scheduler is not ready; stay silent on an unknown probe result."""
     if _builtin_gateway_liveness() is not False:
         return
-    print(color("  ⚠  Scheduler is not ready: no gateway or no fresh profile heartbeat.", Colors.YELLOW))
-    print(color("     If no gateway is running: hermes gateway install\n"
-                "                    sudo hermes gateway install --system  # Linux servers\n"
-                "     Check status:  hermes cron status", Colors.DIM))
+    print(color("  ⚠  调度器尚未就绪：没有运行中的网关，或没有新鲜的 profile 心跳。", Colors.YELLOW))
+    print(color("     如果网关未运行：hermes gateway install\n"
+                "                    sudo hermes gateway install --system  # Linux 服务器\n"
+                "     查看状态：hermes cron status", Colors.DIM))
 
 
 def _format_lateness(seconds: float) -> str:
@@ -143,17 +144,28 @@ def _dispatch_display(dispatch: dict) -> Optional[str]:
         return None
     lateness = _format_lateness(dispatch.get("lateness_seconds", 0))
     if kind == "on_time":
-        return color(f"on time (scheduled {scheduled})", Colors.DIM)
+        return color(f"准时（计划 {scheduled}）", Colors.DIM)
     label = _dispatch_kind_label(kind) or "late"
-    return (color(f"⚠ {label}: ", Colors.YELLOW) + f"scheduled {scheduled}, ran {actual} "
-            + color(f"({lateness} late)", Colors.YELLOW))
+    return (color(f"⚠ {label}：", Colors.YELLOW) + f"计划 {scheduled}，实际执行 {actual} "
+            + color(f"（延迟 {lateness}）", Colors.YELLOW))
+
+
+def _display_width(text: str) -> int:
+    """Terminal display width: CJK wide/fullwidth chars count as 2 cells."""
+    return sum(2 if unicodedata.east_asian_width(ch) in ("W", "F") else 1 for ch in text)
+
+
+def _pad_display(text: str, width: int) -> str:
+    """Left-align ``text`` padded to ``width`` *display* cells (one CJK char = 2)."""
+    return text + " " * max(0, width - _display_width(text))
 
 
 def _print_banner(title: str) -> None:
     """Boxed cyan section header shared by ``cron list`` and ``cron incidents``."""
     print()
     rule = "─" * 73
-    for line in (f"┌{rule}┐", "│" + " " * 25 + title.ljust(48) + "│", f"└{rule}┘"):
+    inner = " " * 25 + title
+    for line in (f"┌{rule}┐", "│" + _pad_display(inner, 73) + "│", f"└{rule}┘"):
         print(color(line, Colors.CYAN))
     print()
 
@@ -162,7 +174,7 @@ def _unverified_targets(unverified) -> str:
     return ", ".join(map(str, unverified)) if isinstance(unverified, list) else str(unverified)
 
 
-_STATE_BADGES = {"paused": ("[paused]", Colors.YELLOW), "completed": ("[completed]", Colors.BLUE)}
+_STATE_BADGES = {"paused": ("[已暂停]", Colors.YELLOW), "completed": ("[已完成]", Colors.BLUE)}
 
 
 def cron_list(show_all: bool = False):
@@ -176,19 +188,19 @@ def cron_list(show_all: bool = False):
         ]
 
     if not jobs:
-        print(color("No scheduled jobs.\nCreate one with 'hermes cron create ...' "
-                    "or the /cron command in chat.", Colors.DIM))
+        print(color("暂无定时任务。\n可用 'hermes cron create ...' 创建，"
+                    "或在对话中使用 /cron 命令。", Colors.DIM))
         return
 
-    _print_banner("Scheduled Jobs")
+    _print_banner("定时任务")
 
     for job in jobs:
         # effective_job_state honours the scheduler flag — never [paused] when enabled=true.
         badge = _STATE_BADGES.get(effective_job_state(job)) or (
-            ("[active]", Colors.GREEN) if job.get("enabled", True) else ("[disabled]", Colors.RED))
+            ("[活跃]", Colors.GREEN) if job.get("enabled", True) else ("[已禁用]", Colors.RED))
         print(f"  {color(job.get('id', '?'), Colors.YELLOW)} {color(*badge)}")
         for label, value in _job_rows(job):
-            print(f"    {label + ':':<11}{value}")
+            print(f"    {_pad_display(label + '：', 11)}{value}")
         for line in _job_warnings(job):
             print(f"    {line}")
         print()
@@ -209,7 +221,7 @@ def _last_run_display(job: Dict[str, Any]) -> str:
     display = color(f"{last_status}: {job.get('last_error', '?')}", Colors.RED)
     streak = int(job.get("failure_streak") or 0)
     if streak >= 2:
-        display += color(f"  ({streak} failures in a row)", Colors.RED)
+        display += color(f"  ({streak} 次）", Colors.RED)
     return display
 
 
@@ -227,25 +239,25 @@ def _job_rows(job: Dict[str, Any]) -> List[tuple[str, str]]:
     mon_state = job.get("monitor_state") or {}
     latest_execution = job.get("latest_execution") or {}
     optional = [
-        ("Skills", ", ".join(skills) if skills else ""),
-        ("Script", job.get("script")),
-        ("Monitor", f"{monitor_source} (agent runs only on output change)" if monitor_source
+        ("技能", ", ".join(skills) if skills else ""),
+        ("脚本", job.get("script")),
+        ("监控", f"{monitor_source}（仅在输出变化时运行 agent）" if monitor_source
          else ""),
-        ("Changed", mon_state.get("last_changed_at") if monitor_source else ""),
-        ("Mode", color("no-agent", Colors.DIM) + " (script stdout delivered directly)"
+        ("变更", mon_state.get("last_changed_at") if monitor_source else ""),
+        ("模式", color("no-agent", Colors.DIM) + "（直接投递脚本 stdout）"
          if job.get("no_agent") else ""),
-        ("Workdir", job.get("workdir")),
-        ("Last run", f"{job.get('last_run_at', '?')}  {_last_run_display(job)}"
+        ("工作目录", job.get("workdir")),
+        ("上次运行", f"{job.get('last_run_at', '?')}  {_last_run_display(job)}"
          if job.get("last_status") else ""),
-        ("Dispatch", _dispatch_display(job.get("last_dispatch"))),
-        ("Execution", f"{latest_execution.get('status', '?')}  {latest_execution.get('id', '?')}"
+        ("调度", _dispatch_display(job.get("last_dispatch"))),
+        ("执行", f"{latest_execution.get('status', '?')}  {latest_execution.get('id', '?')}"
          if latest_execution else "")]
     return [
-        ("Name", job.get("name", "(unnamed)")),
-        ("Schedule", job.get("schedule_display", job.get("schedule", {}).get("value", "?"))),
-        ("Repeat", f"{repeat_info.get('completed', 0)}/{repeat_times}" if repeat_times else "∞"),
+        ("名称", job.get("name", "（未命名）")),
+        ("计划", job.get("schedule_display", job.get("schedule", {}).get("value", "?"))),
+        ("重复", f"{repeat_info.get('completed', 0)}/{repeat_times}" if repeat_times else "∞"),
         _next_run_row(job),
-        ("Deliver", deliver if isinstance(deliver, str) else ", ".join(deliver)),
+        ("投递", deliver if isinstance(deliver, str) else ", ".join(deliver)),
     ] + [(label, value) for label, value in optional if value]
 
 
@@ -278,7 +290,7 @@ def _job_warnings(job: Dict[str, Any]) -> List[str]:
     # A live adapter acked the last send but returned no message_id / raw_response
     # (Slack/Matrix/Mattermost shape): accepted as delivered, but say so here.
     if unverified := job.get("last_delivery_unverified"):
-        lines.append(f"{color('⚠ Delivery UNVERIFIED:', Colors.YELLOW)} adapter acked "
+        lines.append(f"{color('⚠ 投递未验证：', Colors.YELLOW)} adapter acked "
                      f"{_unverified_targets(unverified)} without message_id/raw_response")
     fire_err = job.get("last_fire_error")
     if isinstance(fire_err, dict) and fire_err.get("detail"):
@@ -294,15 +306,15 @@ def cron_tick():
     except CronTickYielded as exc:
         # Inert for a one-shot CLI (no boot fingerprint); report cleanly rather than traceback.
         print(color(f"✗ {exc}", Colors.YELLOW))
-        print("  A fresher gateway process owns the runtime lock and will fire due jobs; this "
-              "stale process yielded its tick.")
+        print("  较新的网关进程持有运行时锁，将触发到期任务；"
+              "本陈旧进程已让出自己的 tick。")
         return 1
     except OSError as exc:
         # Real lock-acquisition failures (EMFILE, EACCES) propagate; they are not contention.
         # For the one-shot CLI surface, report cleanly instead of dumping a traceback; the gateway ticker
         # loop handles its own retry. See #87644.
-        print(color(f"✗ Cron tick failed: {exc}", Colors.RED))
-        print("  Check `hermes cron status` and the gateway log for details.")
+        print(color(f"✗ 定时任务 tick 失败：{exc}", Colors.RED))
+        print("  请检查 `hermes cron status` 及网关日志以了解详情。")
         return 1
     return 0
 
@@ -312,11 +324,11 @@ def cron_runs(job_id: Optional[str] = None, limit: int = 20):
     from cron.executions import list_executions
     records = list_executions(job_id=job_id, limit=limit)
     if not records:
-        print("No cron execution attempts recorded.")
+        print("未记录任何定时任务执行尝试。")
         return
     for record in records:
         print(f"{record.get('id', '?')}  {record.get('status', '?'):<9}  "
-              f"job={record.get('job_id', '?')}  source={record.get('source', '?')}  "
+              f"任务={record.get('job_id', '?')}  来源={record.get('source', '?')}  "
               f"{record.get('claimed_at', '?')}")
         if record.get("error"):
             print(f"    {record['error']}")
@@ -336,48 +348,47 @@ def cron_incidents(args) -> int:
     if action == "ack":
         incident_id = getattr(args, "incident_id", None)
         if not incident_id:
-            print(color("✗ Incident ID required: hermes cron incidents ack <incident_id>", Colors.RED))
+            print(color("✗ 需要提供事件 ID：hermes cron incidents ack <incident_id>", Colors.RED))
             return 1
         if ack_incident(incident_id):
-            print(color(f"✓ Incident {incident_id} acknowledged (closed).", Colors.GREEN))
+            print(color(f"✓ 事件 {incident_id} 已确认（关闭）。", Colors.GREEN))
         else:
-            print(color(f"Incident {incident_id} not found or already closed.", Colors.YELLOW))
+            print(color(f"未找到事件 {incident_id}，或该事件已关闭。", Colors.YELLOW))
         return 0
 
     state = getattr(args, "state", None)
     incidents = list_incidents(state=state)
     if not incidents:
-        print(color("No cron failure incidents recorded.", Colors.DIM))
+        print(color("未记录任何定时任务失败事件。", Colors.DIM))
         if state:
-            print(color(f"  (filtered by state '{state}')", Colors.DIM))
+            print(color(f"  （按状态 '{state}' 过滤）", Colors.DIM))
         return 0
 
-    _print_banner("Cron Failure Incidents")
+    _print_banner("定时任务失败事件")
     for inc in incidents:
         state_display = color(inc["state"], _INCIDENT_STATE_COLORS.get(inc["state"], Colors.DIM))
         error_text = re.sub(r"\s+", " ", inc.get("error") or "").strip()
         if len(error_text) > 160:
-            error_text = error_text[:157].rstrip() + "..."
-        rows = [("Job", inc["job_id"]), ("Type", inc.get("failure_type", "unknown")),
-                ("First seen", inc.get("first_seen_at", "?")),
-                ("Last seen", inc.get("last_seen_at", "?")), ("Error", error_text),
-                ("Output", inc.get("output_file"))]
+            error_text = error_text[:157].rstrip() + "……"
+        rows = [("任务", inc["job_id"]), ("类型", inc.get("failure_type", "unknown")),
+                ("首次出现", inc.get("first_seen_at", "?")),
+                ("最近出现", inc.get("last_seen_at", "?")), ("错误", error_text),
+                ("输出", inc.get("output_file"))]
         print(f"  {color(inc['id'], Colors.YELLOW)}  {state_display}")
         for label, value in rows:
-            if label != "Output" or value:
-                print(f"    {label + ':':<12}{value}")
+            if label != "输出" or value:
+                print(f"    {_pad_display(label + '：', 12)}{value}")
         print()
-    print(color(f"  {len(incidents)} incident(s)  |  ack one with: hermes cron incidents ack <id>",
+    print(color(f"  共 {len(incidents)} 个事件  |  确认命令：hermes cron incidents ack <id>",
                 Colors.DIM))
     return 0
 
 
-_PERMISSION_HINT = ("  Hint: jobs.json may be owned by another user (e.g. rewritten by a root "
-                    "`docker exec hermes hermes cron ...`). Fix ownership to match the gateway "
-                    "user, and prefer `docker exec -u <uid>:<gid>`.")
-_FD_EXHAUSTION_HINT = ("  Hint: the ticker hit file-descriptor exhaustion (EMFILE). The scheduler "
-                       "now retries with backoff and attempts fd reclamation, but if the leak "
-                       "persists, restart the gateway to recover scheduling.")
+_PERMISSION_HINT = ("  提示：jobs.json 可能属于其他用户（例如被 root 通过 "
+                    "`docker exec hermes hermes cron ...` 重写）。请将属主改为与网关用户一致，"
+                    "并优先使用 `docker exec -u <uid>:<gid>`。")
+_FD_EXHAUSTION_HINT = ("  提示：ticker 遇到文件描述符耗尽（EMFILE）。调度器现在会退避重试"
+                       "并尝试回收 fd，但如果泄漏持续存在，请重启网关以恢复调度。")
 
 
 def _ticker_age_is_fresh(age: Optional[float]) -> bool:
@@ -408,44 +419,44 @@ def _print_ticker_health(pids: list, restart_command: str = "hermes gateway rest
 
     if hb_age is None:
         # Ticker never started (non-cron profile, gateway just started, or a config issue).
-        _warn("⚠ Gateway is running but the cron ticker has not reported a heartbeat.")
-        print("  Cron jobs will NOT fire until the ticker writes its first heartbeat.\n"
-              "  If the gateway just started, wait ~60s and re-run `hermes cron status`.\n"
-              f"  If heartbeat never appears, restart: {restart_command}")
+        _warn("⚠ 网关正在运行，但定时任务 ticker 尚未上报心跳。")
+        print("  在 ticker 写入首次心跳之前，定时任务不会触发。\n"
+              "  如果网关刚启动，请等待约 60 秒后重新运行 `hermes cron status`。\n"
+              f"  如果始终没有心跳，请重启：{restart_command}")
     elif not _ticker_age_is_fresh(hb_age):  # ticker thread is gone
-        _warn("⚠ Gateway is running but the cron ticker looks STALLED — "
-              f"no heartbeat for {int(hb_age)}s (expected every ~60s).")
-        print(f"  Cron jobs may NOT be firing. Restart: {restart_command}")
+        _warn("⚠ 网关正在运行，但定时任务 ticker 似乎已停滞 —— "
+              f"已 {int(hb_age)}s 无心跳（预期约每 60s 一次）。")
+        print(f"  定时任务可能未触发。请重启：{restart_command}")
     elif (skew := stale_code_yield_labels(last_error)) is not None:
         # `hermes update` moved the checkout under a running gateway: its ticker yields every
         # tick (heartbeat stays fresh, nothing dispatches) until the process is restarted (#117275).
-        _warn("⚠ Gateway is running STALE code — its cron ticker yields every tick and "
-              "fires NOTHING.")
-        print(color(f"  Booted on {skew[0]}, checkout is now at {skew[1]} "
-                    "(the code was updated under the running gateway).", Colors.RED))
-        print(f"  Restart it onto the new code: {restart_command}")
+        _warn("⚠ 网关正在运行过期的代码 —— 其定时任务 ticker 每次 tick 都会让出，"
+              "不会触发任何任务。")
+        print(color(f"  启动时的版本为 {skew[0]}，当前代码库已是 {skew[1]} "
+                    "（代码在网关运行期间被更新）。", Colors.RED))
+        print(f"  请重启以切到新代码：{restart_command}")
     elif (ok_age is not None and not _ticker_age_is_fresh(ok_age)) or (ok_age is None and last_error):
         # Loop alive but every tick fails (or has never succeeded since boot).
-        _warn("⚠ Gateway and cron ticker are running, but no tick has "
-              f"succeeded {'in ' + str(int(ok_age)) + 's' if ok_age is not None else 'yet'} "
-              "— ticks may be failing.")
+        _warn("⚠ 网关和定时任务 ticker 正在运行，但没有任何一次 tick "
+              f"{'在 ' + str(int(ok_age)) + 's 内成功' if ok_age is not None else '成功过'} "
+              "—— tick 可能在失败。")
         if last_error:
             # WHY ticks fail: root-rewritten jobs.json (PermissionError) or fd exhaustion.
             # Show WHY ticks fail — e.g. a root-rewritten jobs.json (PermissionError) that silently locked
             # out the ticker's uid for ~14h in the field (#68483), or fd exhaustion (EMFILE) that used to
             # stall the scheduler invisibly (#87644).
-            print(color(f"  Last tick error: {last_error}", Colors.RED))
+            print(color(f"  上次 tick 错误：{last_error}", Colors.RED))
             if "Permission denied" in last_error:
                 print(color(_PERMISSION_HINT, Colors.YELLOW))
             elif _cron_is_fd_exhaustion_text(last_error):
                 print(color(_FD_EXHAUSTION_HINT, Colors.YELLOW))
-        print("  Check the gateway log for 'Cron tick error'.")
+        print("  请检查网关日志中的 'Cron tick error'。")
     else:
-        print(color("✓ Gateway is running — cron jobs will fire automatically", Colors.GREEN))
+        print(color("✓ 网关正在运行 —— 定时任务将自动触发", Colors.GREEN))
         if pid_line:
             print(pid_line)
         if hb_age is not None:
-            print(f"  Ticker heartbeat: {int(hb_age)}s ago")
+            print(f"  Ticker 心跳：{int(hb_age)}s 前")
 
 
 def cron_status():
@@ -501,26 +512,26 @@ def cron_status():
             else:
                 _print_ticker_health(pids)
         else:
-            print(color("✗ No gateway is running on this host — cron jobs will NOT fire", Colors.RED))
+            print(color("✗ 本机上没有运行中的网关 —— 定时任务不会触发", Colors.RED))
             # When scheduling last worked before the host went away: without this, a
             # 7h-overdue job still reads as a normal upcoming "Next run" (#114309).
             with contextlib.suppress(Exception):
                 from cron.jobs import TICKER_INTERVAL_SECONDS, get_ticker_heartbeat_age
                 hb_age = get_ticker_heartbeat_age()
                 if hb_age is not None and hb_age > TICKER_INTERVAL_SECONDS * 3 + 20:
-                    print(color("  Scheduler last ticked "
-                                f"{_format_lateness(hb_age)} ago — jobs that came due "
-                                "since then have not fired.", Colors.YELLOW))
-            print("\n  Start the ONE host gateway (it multiplexes every profile, this one included):\n"
-                  "    hermes --profile default gateway install   # user service\n"
-                  "    sudo hermes --profile default gateway install --system  # Linux servers: boot-time service\n"
-                  "    hermes --profile default gateway run       # Or run in foreground")
+                    print(color("  调度器上次 tick 是在 "
+                                f"{_format_lateness(hb_age)} 之前 —— 此后到期的任务 "
+                                "均未触发。", Colors.YELLOW))
+            print("\n  启动这唯一的主机网关（它多路复用所有 profile，本 profile 也包含在内）：\n"
+                  "    hermes --profile default gateway install   # 用户服务\n"
+                  "    sudo hermes --profile default gateway install --system  # Linux 服务器：开机自启服务\n"
+                  "    hermes --profile default gateway run       # 或在前台运行")
             if active not in ("default", "custom"):
-                print("\n  It serves this profile automatically. If a per-profile service or gateway\n"
-                      "  from an older release is still installed, fold it in (preflight + dry run):\n"
+                print("\n  它会自动服务本 profile。如果仍装有旧版本遗留的按 profile 服务或网关，\n"
+                      "  请将其合并进来（预检 + 干跑）：\n"
                       "      hermes --profile default gateway migrate --multiplex --dry-run\n"
                       "      hermes --profile default gateway migrate --multiplex\n"
-                      "  Check: hermes cron status from this profile should show its ticker heartbeat.\n")
+                      "  检查：在本 profile 下运行 hermes cron status 应能看到其 ticker 心跳。\n")
 
     print()
     _print_active_jobs_summary(list_jobs(include_disabled=False))
@@ -530,7 +541,7 @@ def cron_status():
 def _print_active_jobs_summary(jobs) -> None:
     """Print the '<N> active job(s)' + next-run line shared by every status path."""
     if not jobs:
-        print("  No active jobs")
+        print("  无活跃任务")
         return
     from cron.jobs import _parse_aware
 
@@ -540,7 +551,7 @@ def _print_active_jobs_summary(jobs) -> None:
     # by wall clock (wrong across a DST fold) — normalise to UTC before ordering.
     next_runs = [(parsed.astimezone(timezone.utc), j["next_run_at"]) for j in jobs
                  if (parsed := _parse_aware(j.get("next_run_at"))) is not None]
-    print(f"  {len(jobs)} active job(s)")
+    print(f"  {len(jobs)} 个活跃任务")
     if next_runs:
         earliest = min(next_runs, key=lambda run: run[0])[1]
         overdue_by = _next_run_overdue_seconds(earliest)
@@ -549,23 +560,24 @@ def _print_active_jobs_summary(jobs) -> None:
             # as an upcoming "Next run" hides the outage. Same 15m grace as `cron doctor`
             # (_OVERDUE_GRACE_SECONDS) so a job a few minutes behind the ticker's own
             # cadence doesn't flash OVERDUE here while doctor still calls it healthy.
-            print(color(f"  ⚠ Next run {earliest} is OVERDUE — passed "
-                        f"{_format_lateness(overdue_by)} ago but the job has not fired "
-                        "(is the scheduler running?)", Colors.YELLOW))
+            print(color(f"  ⚠ 下次运行 {earliest} 已逾期 —— 已过去 "
+                        f"{_format_lateness(overdue_by)} 但任务并未触发 "
+                        "（调度器是否在运行？）", Colors.YELLOW))
         else:
-            print(f"  Next run: {earliest}")
+            print(f"  下次运行：{earliest}")
     # Post-downtime late fires show at status level, not just per-job in `cron list`.
     late = [j for j in jobs if isinstance(j.get("last_dispatch"), dict)
             and j["last_dispatch"].get("kind") in ("late", "catch_up")]
     if late:
         print()
-        print(color(f"  ⚠ {len(late)} job(s) last fired late:", Colors.YELLOW))
+        print(color(f"  ⚠ 有 {len(late)} 个任务上次为延迟触发（错过触发后的补跑）：",
+                    Colors.YELLOW))
         for j in late:
             d = j["last_dispatch"]
             late_by = _format_lateness(d.get("lateness_seconds", 0))
-            print(f"    {j.get('id', '?')}  {j.get('name', '(unnamed)')}: {_dispatch_kind_label(d.get('kind'))}, "
-                  f"scheduled {d.get('scheduled_at', '?')}, ran {d.get('dispatched_at', '?')} "
-                  + color(f"({late_by} late)", Colors.YELLOW))
+            print(f"    {j.get('id', '?')}  {j.get('name', '（未命名）')}：{_dispatch_kind_label(d.get('kind'))}，"
+                  f"计划 {d.get('scheduled_at', '?')}，实际执行 {d.get('dispatched_at', '?')} "
+                  + color(f"（延迟 {late_by}）", Colors.YELLOW))
 
 
 def _scripts_dir_for_cron() -> Path:
@@ -582,7 +594,7 @@ def _script_health_issue(script: str) -> Optional[str]:
     try:
         path.relative_to(scripts_dir)
     except ValueError:
-        return f"script resolves outside {scripts_dir}: {script!r}"
+        return f"脚本解析路径超出 {scripts_dir}: {script!r}"
     if not path.exists():
         return f"script not found: {path}"
     if not path.is_file():
@@ -601,11 +613,11 @@ def _next_run_overdue_issue(next_run: str) -> Optional[str]:
     """Issue string when ``next_run_at`` is parked in the past."""
     overdue_s = _next_run_overdue_seconds(next_run)
     if overdue_s is None:
-        return f"next_run_at is not a valid timestamp: {next_run!r}"
+        return f"next_run_at 不是有效时间戳：{next_run!r}"
     if overdue_s <= _OVERDUE_GRACE_SECONDS:
         return None
     amount = f"{overdue_s / 3600:.1f}h" if overdue_s >= 3600 else f"{overdue_s / 60:.0f}m"
-    return f"next_run_at is {amount} overdue — job is not firing (is the scheduler running?)"
+    return f"next_run_at 已逾期 {amount} —— 任务未触发（调度器是否在运行？）"
 
 
 def _cron_doctor_issues_for_job(job: Dict[str, Any]) -> List[str]:
@@ -613,7 +625,7 @@ def _cron_doctor_issues_for_job(job: Dict[str, Any]) -> List[str]:
     last_status = str(job.get("last_status") or "").strip().lower()
     # "delivery_failed" = the agent run succeeded; the delivery issue below reports it.
     if last_status and last_status not in {"ok", "delivery_failed", "delivery_queued"}:
-        issues.append(f"last run failed: {str(job.get('last_error') or 'unknown error').strip()}")
+        issues.append(f"上次运行失败：{str(job.get('last_error') or 'unknown error').strip()}")
     if delivery_err := str(job.get("last_delivery_error") or "").strip():
         issues.append(f"last run finished but the result was not delivered ({_short_reason(delivery_err)}). "
                       f"{_delivery_fix_hint(job)}")
@@ -651,19 +663,19 @@ def cron_doctor() -> int:
     jobs = list_jobs(include_disabled=False)
     findings = [(job, issues) for job in jobs if (issues := _cron_doctor_issues_for_job(job))]
     if not findings:
-        print(color("✓ Cron doctor found no issues", Colors.GREEN))
-        note = f"  Checked {len(jobs)} active job(s)." if jobs else "  No active jobs configured."
+        print(color("✓ cron doctor 未发现问题", Colors.GREEN))
+        note = f"  已检查 {len(jobs)} 个活跃任务。" if jobs else "  未配置活跃任务。"
         print(color(note, Colors.DIM))
         return 0
     issue_count = sum(len(issues) for _, issues in findings)
-    print(color(f"Cron doctor found {issue_count} issue(s) across {len(findings)} job(s):", Colors.YELLOW))
+    print(color(f"cron doctor 在 {len(findings)} 个任务中发现 {issue_count} 个问题：", Colors.YELLOW))
     print()
     for job, issues in findings:
-        print(f"  {color(job.get('id', '?'), Colors.YELLOW)} {job.get('name', '(unnamed)')}")
+        print(f"  {color(job.get('id', '?'), Colors.YELLOW)} {job.get('name', '（未命名）')}")
         for issue in issues:
             print(f"    - {issue}")
     print()
-    print(color("Review the findings above, then run `hermes cron doctor` again.", Colors.DIM))
+    print(color("下一步：修复上述任务配置，然后再次运行 `hermes cron doctor`。", Colors.DIM))
     return 1
 
 
@@ -680,12 +692,12 @@ def _job_api_kwargs(args) -> Dict[str, Any]:
 
 
 _JOB_DETAIL_LINES = (
-    ("script", "  Script: {}"),
-    ("monitor_script", "  Monitor: {} (agent runs only on output change)"),
-    ("monitor_url", "  Monitor: {} (agent runs only on output change)"),
-    ("no_agent", "  Mode: no-agent (script stdout delivered directly)"),
-    ("continuity", "  Continuity: on (each run sees the previous run's output)"),
-    ("workdir", "  Workdir: {}"))
+    ("script", "  脚本：{}"),
+    ("monitor_script", "  监控：{}（仅在输出变化时运行 agent）"),
+    ("monitor_url", "  监控：{}（仅在输出变化时运行 agent）"),
+    ("no_agent", "  模式：no-agent（直接投递脚本 stdout）"),
+    ("continuity", "  连续性：开启（每次运行都能看到上一次运行的输出）"),
+    ("workdir", "  工作目录：{}"))
 
 
 def _print_job_details(job_data: Dict[str, Any]) -> None:
@@ -707,17 +719,17 @@ def cron_create(args):
            if getattr(args, "paused", False) or getattr(args, "paused_reason", None) is not None else {}),
         **_job_api_kwargs(args))
     if not result.get("success"):
-        print(color(f"Failed to create job: {result.get('error', 'unknown error')}", Colors.RED))
+        print(color(f"创建任务失败：{result.get('error', '未知错误')}", Colors.RED))
         return 1
-    print(color(f"Created job: {result['job_id']}", Colors.GREEN))
-    print(f"  Name: {result['name']}\n  Schedule: {result['schedule']}")
+    print(color(f"已创建任务：{result['job_id']}", Colors.GREEN))
+    print(f"  名称：{result['name']}\n  计划：{result['schedule']}")
     if result.get("skills"):
-        print(f"  Skills: {', '.join(result['skills'])}")
+        print(f"  技能：{', '.join(result['skills'])}")
     _print_job_details(result.get("job", {}))
     if not result.get("job", {}).get("enabled", True):
-        print("  Created PAUSED — resume to schedule, or explicitly run now.")
+        print("  已创建为暂停状态 —— 恢复后才会按计划执行，或现在显式运行一次。")
     else:
-        print(f"  Next run: {result['next_run_at']}")
+        print(f"  下次运行：{result['next_run_at']}")
     _warn_if_gateway_not_running()
     return 0
 
@@ -729,10 +741,10 @@ def cron_edit(args):
     except AmbiguousJobReference as exc:
         print(color(str(exc), Colors.RED))
         for m in exc.matches:
-            print(f"  {m['id']}  (name: {m.get('name')!r})")
+            print(f"  {m['id']}  （名称：{m.get('name')!r}）")
         return 1
     if not job:
-        print(color(f"Job not found: {args.job_id}", Colors.RED))
+        print(color(f"未找到任务：{args.job_id}", Colors.RED))
         return 1
     existing_skills = list(job.get("skills") or ([job["skill"]] if job.get("skill") else []))
     replacement_skills = _normalize_skills(getattr(args, "skill", None), getattr(args, "skills", None))
@@ -752,15 +764,18 @@ def cron_edit(args):
                        prompt=getattr(args, "prompt", None), skills=final_skills,
                        no_agent=getattr(args, "no_agent", None), **_job_api_kwargs(args))
     if not result.get("success"):
-        print(color(f"Failed to update job: {result.get('error', 'unknown error')}", Colors.RED))
+        print(color(f"更新任务失败：{result.get('error', '未知错误')}", Colors.RED))
         return 1
     updated = result["job"]
-    print(color(f"Updated job: {updated['job_id']}", Colors.GREEN))
-    print(f"  Name: {updated['name']}\n  Schedule: {updated['schedule']}")
-    print(f"  Skills: {', '.join(updated['skills'])}" if updated.get("skills") else
-          "  Skills: none")
+    print(color(f"已更新任务：{updated['job_id']}", Colors.GREEN))
+    print(f"  名称：{updated['name']}\n  计划：{updated['schedule']}")
+    print(f"  技能：{', '.join(updated['skills'])}" if updated.get("skills") else
+          "  技能：无")
     _print_job_details(updated)
     return 0
+
+
+_ACTION_LABELS = {"pause": "暂停", "resume": "恢复", "run": "触发", "remove": "删除"}
 
 
 def _job_action(action: str, job_id: str, success_verb: str) -> int:
@@ -783,12 +798,12 @@ def _job_action(action: str, job_id: str, success_verb: str) -> int:
         if _stateless_token is not None:
             _SESSION_ASYNC_DELIVERY.reset(_stateless_token)
     if not result.get("success"):
-        print(color(f"Failed to {action} job: {result.get('error', 'unknown error')}", Colors.RED))
+        print(color(f"{_ACTION_LABELS.get(action, action)}任务失败：{result.get('error', '未知错误')}", Colors.RED))
         return 1
     job = result.get("job") or result.get("removed_job") or {}
-    print(color(f"{success_verb} job: {job.get('name', job_id)} ({job_id})", Colors.GREEN))
+    print(color(f"已{success_verb}任务：{job.get('name', job_id)}（{job_id}）", Colors.GREEN))
     if action in {"resume", "run"} and result.get("job", {}).get("next_run_at"):
-        print(f"  Next run: {result['job']['next_run_at']}")
+        print(f"  下次运行：{result['job']['next_run_at']}")
     if action == "run":
         print(f"  {_run_outcome(result.get('job', {}))}")
     return 0
@@ -801,12 +816,12 @@ def _run_outcome(job: Dict[str, Any]) -> str:
     after this CLI exits, so report the dispatch rather than a success/failure verdict.
     """
     if job.get("delegation_id"):
-        return f"Running in background (delegation {job['delegation_id']})."
+        return f"正在后台运行（委派 {job['delegation_id']}）。"
     if job.get("execution_mode") == "background":
-        return "Running in background."
+        return "正在后台运行。"
     if job.get("executed"):
-        return f"Ran now: {'succeeded' if job.get('execution_success') else 'failed'}."
-    return job.get("execution_skipped") or "It will run on the next scheduler tick."
+        return f"立即运行：{'成功' if job.get('execution_success') else '失败'}。"
+    return job.get("execution_skipped") or "将在下一个调度器 tick 时运行。"
 
 
 def cron_resume(args) -> int:
@@ -814,21 +829,21 @@ def cron_resume(args) -> int:
     run_at = getattr(args, "run_at", None)
     run_now = getattr(args, "run_now", False)
     if run_at and run_now:
-        print(color("Use exactly one of --at or --run-now.", Colors.RED))
+        print(color("只能使用 --at 或 --run-now 其中之一。", Colors.RED))
         return 1
     if not run_at and not run_now:
-        return _job_action("resume", args.job_id, "Resumed")
+        return _job_action("resume", args.job_id, "恢复")
     from cron.jobs import AmbiguousJobReference, _hermes_now, rearm_oneshot
     try:
         job = rearm_oneshot(args.job_id, _hermes_now().isoformat() if run_now else run_at)
     except (AmbiguousJobReference, ValueError) as exc:
-        print(color(f"Failed to re-arm job: {exc}", Colors.RED))
+        print(color(f"重新设置任务失败：{exc}", Colors.RED))
         return 1
     if not job:
-        print(color(f"Job not found: {args.job_id}", Colors.RED))
+        print(color(f"未找到任务：{args.job_id}", Colors.RED))
         return 1
-    print(color(f"Re-armed job: {job.get('name', args.job_id)} ({args.job_id})", Colors.GREEN)
-          + f"\n  Next run: {job.get('next_run_at')}")
+    print(color(f"已重新设置任务：{job.get('name', args.job_id)}（{args.job_id}）", Colors.GREEN)
+          + f"\n  下次运行：{job.get('next_run_at')}")
     return 0
 
 
@@ -844,24 +859,24 @@ def cron_notepad(args) -> int:
     key = getattr(args, "key", None)
     value = getattr(args, "value", None)
     if not job_id:
-        print(color("A job ID is required.", Colors.RED))
+        print(color("需要提供任务 ID。", Colors.RED))
         return 1
     try:
         if action not in ("set", "get", "delete"):  # list (default)
             notes = notepad.list_notes(job_id)
             if not notes:
-                print(color(f"Notepad for job {job_id} is empty.", Colors.DIM))
+                print(color(f"任务 {job_id} 的记事本为空。", Colors.DIM))
             for note in notes:
                 print(f"  {color(note['key'], Colors.YELLOW)} = {note['value']}\n"
-                      f"    {color('updated: ' + str(note['updated_at']), Colors.DIM)}")
+                      f"    {color('更新时间：' + str(note['updated_at']), Colors.DIM)}")
             return 0
         usage_args = "set <key> <value>" if action == "set" else f"{action} <key>"
         if key is None or (action == "set" and value is None):
-            print(color(f"Usage: hermes cron notepad <job_id> {usage_args}", Colors.RED))
+            print(color(f"用法：hermes cron notepad <job_id> {usage_args}", Colors.RED))
             return 1
         if action == "set":
             notepad.set_note(job_id, key, value)
-            print(color(f"Set notepad key '{key}' for job {job_id}.", Colors.GREEN))
+            print(color(f"已为任务 {job_id} 设置记事本键 '{key}'。", Colors.GREEN))
             return 0
         if action == "get":
             stored = notepad.get_note(job_id, key)
@@ -869,12 +884,12 @@ def cron_notepad(args) -> int:
                 print(stored)
                 return 0
         elif notepad.delete_note(job_id, key):
-            print(color(f"Deleted notepad key '{key}' for job {job_id}.", Colors.GREEN))
+            print(color(f"已删除任务 {job_id} 的记事本键 '{key}'。", Colors.GREEN))
             return 0
-        print(color(f"No notepad key '{key}' for job {job_id}.", Colors.YELLOW))
+        print(color(f"任务 {job_id} 没有记事本键 '{key}'。", Colors.YELLOW))
         return 1
     except ValueError as exc:
-        print(color(f"Notepad error: {exc}", Colors.RED))
+        print(color(f"记事本错误：{exc}", Colors.RED))
         return 1
 
 
@@ -889,7 +904,7 @@ _CRON_SUBCOMMANDS = {
     "notepad": lambda a: cron_notepad(a),
     "create": lambda a: cron_create(a),
     "edit": lambda a: cron_edit(a),
-    "pause": lambda a: _job_action("pause", a.job_id, "Paused"),
+    "pause": lambda a: _job_action("pause", a.job_id, "暂停"),
     "resume": lambda a: cron_resume(a),
     "run": lambda a: _job_action("run", a.job_id, "Triggered"),
     "remove": lambda a: _job_action("remove", a.job_id, "Removed"),
@@ -905,6 +920,6 @@ def cron_command(args):
     handler = _CRON_SUBCOMMANDS.get("list" if subcmd is None else subcmd)
     if handler is not None:
         return handler(args)
-    print(f"Unknown cron command: {subcmd}\n"
+    print(f"未知的 cron 命令：{subcmd}\n"
           "Usage: hermes cron [list|create|edit|pause|resume|run|remove|status|runs|doctor|tick]")
     sys.exit(1)

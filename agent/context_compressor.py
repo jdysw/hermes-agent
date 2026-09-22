@@ -278,10 +278,12 @@ _LEGACY_COMPRESSION_CONTINUATION_USER_CONTENT = (
 )
 # Content string is the authoritative marker: SessionDB drops ``_``-metadata.
 MAX_ITERATIONS_SUMMARY_REQUEST = (
-    "You've reached the maximum number of tool-calling iterations allowed. Please provide a final response "
-    "summarizing what you've found and accomplished so far, without calling any more tools."
+    "你已达到工具调用迭代次数上限。请给出最终回复，"
+    "总结目前为止你的发现与已完成的工作，不要再调用任何工具。"
 )
 _BACKGROUND_PROCESS_NOTIFICATION_PREFIX = "[IMPORTANT: Background process "
+# 汉化后的等价前缀（后台进程通知已中文化；两套都认，避免压缩误删/误留）
+_BACKGROUND_PROCESS_NOTIFICATION_PREFIX_CN = "[IMPORTANT: 后台进程 "
 
 
 def _fresh_compaction_message_copy(msg: Dict[str, Any]) -> Dict[str, Any]:
@@ -865,8 +867,9 @@ def _lean_recovery_stub(tool_name: str, content_len: int, session_id: str) -> st
 
 
 _SYNTHETIC_USER_ROW_PREFIXES = (
-    "[System:", "[CONTEXT", "[PRIOR CONTEXT", "[IMPORTANT: Background", "[Your active task list",
-    "[Planning state preserved", "[ASYNC DELEGATION", "[OUT-OF-BAND", "Cronjob Response:",
+    "[System:", "[CONTEXT", "[PRIOR CONTEXT", "[IMPORTANT: Background", "[IMPORTANT: 后台进程",
+    "[Your active task list",
+    "[Planning state preserved", "[ASYNC DELEGATION", "[OUT-OF-BAND", "Cronjob Response:", "Cronjob 回复：",
 )
 
 
@@ -3318,7 +3321,7 @@ class ContextCompressor(SummaryDispatchMixin, MicroCompactionMixin, ContextEngin
             elif role == "tool":
                 tool_name, tool_args = call_id_to_tool.get(str(msg.get("tool_call_id") or ""), ("unknown", ""))
                 tool_actions.append(_summarize_tool_result(tool_name, tool_args, text or ""))
-                if re.search(r"\b(error|failed|exception|traceback|timeout|timed out|fatal)\b", text, re.I):
+                if re.search(r"\b(error|failed|exception|traceback|timeout|timed out|fatal)\b|错误|失败|异常|超时", text, re.I):
                     blockers.append(text[:500])
         return {
             "user_asks": user_asks,
@@ -3817,7 +3820,7 @@ Write only the summary body. Do not include any preamble or prefix."""
         # main-model retry before any cooldown. (#11978, #11914)
         if isinstance(e, RuntimeError) and "no llm provider configured" in str(e).lower():
             self._record_compression_failure_cooldown(_SUMMARY_FAILURE_COOLDOWN_SECONDS, "no auxiliary LLM provider configured")
-            self._last_summary_error = "no auxiliary LLM provider configured"
+            self._last_summary_error = "未配置辅助 LLM 提供方"
             logger.warning(
                 "Context compression: no provider available for summary. Middle turns will be dropped without "
                 "summary for %d seconds.",
@@ -3960,7 +3963,8 @@ Write only the summary body. Do not include any preamble or prefix."""
             _DEGENERATE_FINAL_NUDGE, _DROPPED_TOOLCALL_NUDGE_CONTENT, _EMPTY_TOOL_RESPONSE_NUDGE,
             _LENGTH_CONTINUATION_NETWORK_STUB, _LENGTH_CONTINUATION_OUTPUT_LIMIT,
         } or text.startswith((
-            _BACKGROUND_PROCESS_NOTIFICATION_PREFIX, TODO_INJECTION_HEADER + "\n", _LENGTH_CONTINUATION_DROPPED_TOOLS_PREFIX,
+            _BACKGROUND_PROCESS_NOTIFICATION_PREFIX, _BACKGROUND_PROCESS_NOTIFICATION_PREFIX_CN,
+            TODO_INJECTION_HEADER + "\n", _LENGTH_CONTINUATION_DROPPED_TOOLS_PREFIX,
         ))
 
     @staticmethod

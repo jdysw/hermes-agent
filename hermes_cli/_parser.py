@@ -10,6 +10,8 @@ import difflib
 import re
 from functools import lru_cache
 
+from hermes_cli._argparse_zh import ZhArgumentParser
+
 # `--profile` / `-p` is consumed by ``main._apply_profile_override`` before argparse runs
 # (it sets ``HERMES_HOME`` and strips itself from ``sys.argv``), so it isn't on the parser.
 # Listed here so all "carry over on relaunch" metadata lives in one file.
@@ -300,7 +302,7 @@ def _build_chat_parser(subparsers) -> argparse.ArgumentParser:
     return chat_parser
 
 
-class HermesArgumentParser(argparse.ArgumentParser):
+class HermesArgumentParser(ZhArgumentParser):
     """argparse parser whose unknown-subcommand error is three short lines, not a 70-name dump.
 
     Stock argparse prints the full usage block plus ``(choose from 'chat', 'model', …)`` when

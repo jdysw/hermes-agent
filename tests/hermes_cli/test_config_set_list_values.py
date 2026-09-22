@@ -57,7 +57,7 @@ def test_invalid_list_literal_is_refused_and_nothing_written(user_home, capsys):
     with pytest.raises(SystemExit):
         set_config_value("platform_toolsets.line", '["unclosed')
     captured = capsys.readouterr()
-    assert "not valid yaml/json" in captured.err.lower()
+    assert "并非合法的" in captured.err
     assert "platform_toolsets" not in (read_raw_config() or {})
 
 

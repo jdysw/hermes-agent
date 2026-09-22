@@ -144,7 +144,7 @@ def test_review_cli_round_trip_preserves_handoff(
         f"request-review {task_id} --summary 'ready for review' "
         "--reviewer reviewer --metadata '{\"tests_run\": 3}'"
     )
-    assert "Requested review" in output
+    assert "请求评审" in output
 
     with kbc.connect() as conn:
         task = kb.get_task(conn, task_id)
@@ -160,7 +160,7 @@ def test_review_cli_round_trip_preserves_handoff(
     output = kc.run_slash(
         f"request-changes {task_id} 'cover the malformed payload case'"
     )
-    assert "Requested changes" in output
+    assert "请求修改" in output
     with kbc.connect() as conn:
         task = kb.get_task(conn, task_id)
         assert task is not None
@@ -220,7 +220,7 @@ def test_domain_and_cli_review_handoffs_redact_before_persistence(
         f'request-review {cli_id} --summary "cli {secret}" '
         f"--metadata '{{\"token\":\"{secret}\"}}'"
     )
-    assert "Requested review" in cli_output
+    assert "请求评审" in cli_output
     assert secret not in cli_output
     with kbc.connect() as conn:
         run = kb.latest_run(conn, cli_id)
@@ -273,14 +273,14 @@ def test_cli_reopen_review_is_transition_first_and_redacts_reason(
     invalid_output = kc.run_slash(
         f'reopen-review {invalid_id} --reason "invalid {secret}"'
     )
-    assert "cannot reopen" in invalid_output
+    assert "无法重新打开" in invalid_output
     with kbc.connect() as conn:
         assert kb.list_comments(conn, invalid_id) == []
 
     success_output = kc.run_slash(
         f'reopen-review {review_id} --reason "revise {secret}"'
     )
-    assert "Reopened" in success_output
+    assert "已重新打开" in success_output
     assert secret not in success_output
     with kbc.connect() as conn:
         task = kb.get_task(conn, review_id)
@@ -363,7 +363,7 @@ def test_goal_mode_review_handoff_cannot_bypass_judge(
         lambda *args, **kwargs: ("continue", "tests are missing", False, None, False),
     )
     output = kc.run_slash(f"request-review {cli_task} --summary 'Looks ready.'")
-    assert "rejected by judge" in output
+    assert "被评判器拒绝" in output
     with kbc.connect() as conn:
         cli_after = kb.get_task(conn, cli_task)
         assert cli_after is not None

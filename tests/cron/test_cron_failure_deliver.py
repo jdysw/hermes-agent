@@ -122,7 +122,7 @@ class TestFailureDeliverRouting:
         s.run_one_job({"id": "j1", "name": "scout", "deliver": "slack:D0MAIN"})
 
         assert [c["chat_id"] for c in run_env["send"]] == ["D0MAIN"]
-        assert "failed" in run_env["send"][0]["message"].lower()
+        assert "失败" in run_env["send"][0]["message"]
 
     def test_failure_deliver_local_is_silent_but_state_is_recorded(
         self, run_env, monkeypatch
@@ -157,7 +157,7 @@ class TestFailureDeliverRouting:
         })
 
         assert [c["chat_id"] for c in run_env["send"]] == ["D0ALERTS"]
-        assert "failed" in run_env["send"][0]["message"].lower()
+        assert "失败" in run_env["send"][0]["message"]
 
     def test_success_ignores_failure_deliver(self, run_env, monkeypatch):
         """(d) Success output still goes to deliver — failure_deliver is

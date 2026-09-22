@@ -48,9 +48,9 @@ def _parse_metadata_flag(raw: Optional[str]) -> tuple[Optional[dict], int]:
     try:
         metadata = json.loads(raw)
         if not isinstance(metadata, dict):
-            raise ValueError("must be a JSON object")
+            raise ValueError("必须是 JSON 对象")
     except (ValueError, json.JSONDecodeError) as exc:
-        return None, _err(f"kanban: --metadata: {exc}", 2)
+        return None, _err(f"kanban: --metadata：{exc}", 2)
     return metadata, 0
 
 
@@ -59,7 +59,7 @@ def _run_state_kwargs(args: argparse.Namespace, cmd: str) -> tuple[Optional[dict
     st = getattr(args, "state_type", None)
     sn = getattr(args, "state_name", None)
     if (st is None) != (sn is None):
-        return None, _err(f"kanban {cmd}: pass both --state-type and --state-name, or omit both", 2)
+        return None, _err(f"kanban {cmd}: 请同时传入 --state-type 和 --state-name，或都省略", 2)
     return ({} if st is None else {"state_type": st, "state_name": sn}), 0
 
 
@@ -76,10 +76,10 @@ def _parse_workspace_flag(value: Optional[str]) -> tuple[Optional[str], Optional
             continue
         path = v[len(prefix):].strip()
         if not path:
-            raise argparse.ArgumentTypeError(f"--workspace {prefix} requires a path after the colon")
+            raise argparse.ArgumentTypeError(f"--workspace {prefix} 需要在冒号后跟一个路径")
         return (kind, os.path.expanduser(path))
-    raise argparse.ArgumentTypeError(f"unknown --workspace value {value!r}: use scratch, worktree, "
-                                     "worktree:<path>, or dir:<path>")
+    raise argparse.ArgumentTypeError(f"未知的 --workspace 取值 {value!r}：请使用 scratch、worktree、"
+                                     "worktree:<path> 或 dir:<path>")
 
 
 def _parse_branch_flag(value: Optional[str]) -> Optional[str]:
@@ -88,11 +88,11 @@ def _parse_branch_flag(value: Optional[str]) -> Optional[str]:
         return None
     branch = value.strip()
     if not branch:
-        raise argparse.ArgumentTypeError("--branch requires a non-empty name")
+        raise argparse.ArgumentTypeError("--branch 需要非空名称")
     if branch.startswith("-"):
-        raise argparse.ArgumentTypeError("--branch must not start with '-'")
+        raise argparse.ArgumentTypeError("--branch 不能以 '-' 开头")
     if any(ch.isspace() for ch in branch):
-        raise argparse.ArgumentTypeError("--branch must not contain whitespace")
+        raise argparse.ArgumentTypeError("--branch 不能包含空白字符")
     return branch
 
 
@@ -122,15 +122,13 @@ def _check_dispatcher_presence(hermes_home: Optional[Path] = None) -> tuple[bool
     if pid and bool(_kanban_config().get("dispatch_in_gateway", True)):
         return (True, f"gateway pid={pid}, dispatch enabled")
     if pid:
-        return (False, "Gateway is running but kanban.dispatch_in_gateway=false in "
-                "config.yaml — the task will sit in 'ready' until you flip it "
-                "back on and restart the gateway, OR run the legacy "
-                "standalone daemon (`hermes kanban daemon --force`).")
-    return (False, "No gateway is running — the task will sit in 'ready' until you "
-            "start it. Run:\n    hermes gateway start\n"
-            "The gateway hosts an embedded dispatcher (tick interval 60s by "
-            "default); your task will be picked up on the next tick after "
-            "the gateway comes up.")
+        return (False, "网关正在运行，但 config.yaml 中 kanban.dispatch_in_gateway=false"
+                "——任务会一直停留在 'ready'，直到你把它重新打开并重启网关，"
+                "或者运行旧版独立守护进程（`hermes kanban daemon --force`）。")
+    return (False, "没有网关在运行——任务会一直停留在 'ready'，直到你启动网关。运行：\n"
+            "    hermes gateway start\n"
+            "网关内置了调度器（默认触发间隔 60s）；网关启动后，"
+            "你的任务会在下一次触发时被接管。")
 
 
 # --- Command dispatch ---
@@ -143,14 +141,14 @@ def kanban_command(args: argparse.Namespace) -> int:
         if parser is not None:
             parser.print_help()
         else:
-            print("usage: hermes kanban <action> [options]\n"
-                  "Run 'hermes kanban --help' for the full list of actions.", file=sys.stderr)
+            print("用法：hermes kanban <action> [options]\n"
+                  "运行 'hermes kanban --help' 查看完整动作列表。", file=sys.stderr)
         return 0
 
     # Fast-fail for UX only; the durable trust boundary is in kanban_db, since children can
     # import DB mutators directly.
     if _is_delegated_child_cli_mutation(args):
-        return _err("kanban: delegate_task child contexts cannot mutate Kanban tasks via the CLI")
+        return _err("kanban: delegate_task 子任务上下文不能通过 CLI 修改 Kanban 任务")
 
     # `boards …` manages board metadata and the current-board pointer itself, so it must ignore
     # the `--board` routing override (else `--board beta boards show` reports beta).
@@ -167,12 +165,12 @@ def kanban_command(args: argparse.Namespace) -> int:
         except ValueError as exc:
             return _err(f"kanban: {exc}", 2)
         if not normed:
-            return _err("kanban: --board requires a slug", 2)
+            return _err("kanban: --board 需要一个 slug", 2)
         # Boards other than 'default' must already exist — typoed slugs would otherwise silently
         # create an empty board.
         if normed != kb.DEFAULT_BOARD and not kb.board_exists(normed):
-            return _err(f"kanban: board {normed!r} does not exist. "
-                        f"Create it with `hermes kanban boards create {normed}`.")
+            return _err(f"kanban: 看板 {normed!r} 不存在。"
+                        f"请用 `hermes kanban boards create {normed}` 创建它。")
         board_scope = kb.scoped_current_board(normed)
 
     with board_scope:
@@ -185,11 +183,11 @@ def kanban_command(args: argparse.Namespace) -> int:
         try:
             kb.init_db()
         except Exception as exc:
-            return _err(f"kanban: could not initialize database: {exc}")
+            return _err(f"kanban: 无法初始化数据库：{exc}")
 
         handler = _HANDLERS.get(action)
         if not handler:
-            return _err(f"kanban: unknown action {action!r}", 2)
+            return _err(f"kanban: 未知动作 {action!r}", 2)
         try:
             return int(handler(args) or 0)
         except (ValueError, RuntimeError, PermissionError) as exc:
@@ -265,7 +263,7 @@ def _require_ids(args: argparse.Namespace) -> tuple[list[str], int]:
     """``args.task_ids`` -> ``(ids, 0)`` or ``([], 1)`` after printing the standard error."""
     ids = list(args.task_ids or [])
     if not ids:
-        return ids, _err("at least one task_id is required")
+        return ids, _err("至少需要一个 task_id")
     return ids, 0
 
 
@@ -281,17 +279,17 @@ def _parse_duration(val) -> Optional[int]:
         pass
     units = {"s": 1, "m": 60, "h": 3600, "d": 86400}
     if not (s and s[-1] in units):
-        raise ValueError(f"malformed duration {val!r} (expected 30s, 5m, 2h, 1d, or a number)")
+        raise ValueError(f"时长格式错误 {val!r}（应为 30s、5m、2h、1d 或一个数字）")
     try:
         n = float(s[:-1])
     except ValueError as exc:
-        raise ValueError(f"malformed duration {val!r}") from exc
+        raise ValueError(f"时长格式错误 {val!r}") from exc
     return int(n * units[s[-1]])
 
 
 def _cmd_init(args: argparse.Namespace) -> int:
     path = kb.init_db()
-    print(f"Kanban DB initialized at {path}")
+    print(f"Kanban 数据库已初始化于 {path}")
     print()
     # Profiles on disk == assignees already addressable.
     try:
@@ -299,18 +297,18 @@ def _cmd_init(args: argparse.Namespace) -> int:
     except Exception:
         profiles = []
     if profiles:
-        print(f"Discovered {len(profiles)} profile(s) on disk; any of these can be an --assignee:")
+        print(f"磁盘上发现 {len(profiles)} 个 profile；其中任意一个都可以作为 --assignee：")
         for name in profiles:
             print(f"  {name}")
     else:
-        print("No profiles found under ~/.hermes/profiles/.\n"
-              "Create one with `hermes -p <name> setup` before assigning tasks.")
+        print("在 ~/.hermes/profiles/ 下未找到 profile。\n"
+              "分配任务前请先用 `hermes -p <name> setup` 创建一个。")
     print(
-        "\nNext step: start the gateway so ready tasks actually get picked up.\n"
+        "\n下一步：启动网关，让 ready 状态的任务真正被接管。\n"
         "  hermes gateway start\n\n"
-        "The gateway hosts an embedded dispatcher that ticks every 60 seconds\n"
-        "by default (config: kanban.dispatch_interval_seconds). Without a\n"
-        "running gateway, tasks stay in 'ready' forever."
+        "网关内置调度器，默认每 60 秒触发一次\n"
+        "（配置：kanban.dispatch_interval_seconds）。若没有运行中的网关，\n"
+        "任务会永远停留在 'ready'。"
     )
     return 0
 
@@ -319,8 +317,8 @@ def _cmd_heartbeat(args: argparse.Namespace) -> int:
     with kbc.connect_closing() as conn:
         ok = kbd.heartbeat_worker(conn, args.task_id, note=getattr(args, "note", None),
                                  expected_run_id=_worker_run_id_for(args.task_id))
-    return _ok_or_err(ok, f"cannot heartbeat {args.task_id} (not running?)",
-                      f"Heartbeat recorded for {args.task_id}")
+    return _ok_or_err(ok, f"无法为 {args.task_id} 记录心跳（未在运行？）",
+                      f"已为 {args.task_id} 记录心跳")
 
 
 def _cmd_assignees(args: argparse.Namespace) -> int:
@@ -329,11 +327,11 @@ def _cmd_assignees(args: argparse.Namespace) -> int:
     if _json_out(args, data):
         return 0
     if not data:
-        print("(no assignees — create a profile with `hermes -p <name> setup`)")
+        print("（无 assignee——用 `hermes -p <name> setup` 创建一个 profile）")
         return 0
-    print(f"{'NAME':20s}  {'ON DISK':8s}  COUNTS")
+    print(f"{'名称':20s}  {'在磁盘':8s}  计数")
     for entry in data:
-        on_disk = "yes" if entry["on_disk"] else "no"
+        on_disk = "是" if entry["on_disk"] else "否"
         print(f"{entry['name']:20s}  {on_disk:8s}  {_fmt_counts(entry['counts'] or {}, '(idle)')}")
     return 0
 
@@ -357,15 +355,15 @@ def _cmd_create(args: argparse.Namespace) -> int:
     except argparse.ArgumentTypeError as exc:
         return _err(f"kanban: {exc}", 2)
     if branch_name and ws_kind != "worktree":
-        return _err("kanban: --branch is only valid with --workspace worktree", 2)
+        return _err("kanban: --branch 仅在配合 --workspace worktree 时有效", 2)
     try:
         max_runtime = _parse_duration(getattr(args, "max_runtime", None))
     except ValueError as exc:
-        return _err(f"kanban: --max-runtime: {exc}", 2)
+        return _err(f"kanban: --max-runtime：{exc}", 2)
     max_retries = getattr(args, "max_retries", None)
     if max_retries is not None and max_retries < 1:
-        return _err(f"kanban: --max-retries must be >= 1 (got {max_retries}); "
-                    "use 1 to trip on the first failure.", 2)
+        return _err(f"kanban: --max-retries 必须 >= 1（当前为 {max_retries}）；"
+                    "设为 1 表示首次失败即触发。", 2)
     with kbc.connect_closing() as conn:
         task_id = kb.create_task(
             conn, title=args.title, body=body, assignee=args.assignee,
@@ -404,7 +402,7 @@ def _cmd_swarm(args: argparse.Namespace) -> int:
     except ValueError as exc:
         return _err(f"kanban swarm: {exc}", 2)
     if not workers:
-        return _err("kanban swarm: at least one --worker is required", 2)
+        return _err("kanban swarm: 至少需要一个 --worker", 2)
     with kbc.connect_closing() as conn:
         created = ks.create_swarm(
             conn, goal=args.goal, workers=workers, verifier_assignee=args.verifier,
@@ -415,10 +413,10 @@ def _cmd_swarm(args: argparse.Namespace) -> int:
     if getattr(args, "json", False):
         _print_json(created.as_dict())
     else:
-        print(f"Swarm root: {created.root_id}\n"
-              "Workers: " + ", ".join(created.worker_ids) + "\n"
-              f"Verifier: {created.verifier_id}\n"
-              f"Synthesizer: {created.synthesizer_id}")
+        print(f"Swarm 根任务：{created.root_id}\n"
+              "工作节点：" + ", ".join(created.worker_ids) + "\n"
+              f"验证者：{created.verifier_id}\n"
+              f"综合者：{created.synthesizer_id}")
     return 0
 
 
@@ -443,10 +441,10 @@ def _cmd_list(args: argparse.Namespace) -> int:
         all_boards = []
     if len(all_boards) > 1:
         other_count = len(all_boards) - 1
-        print(f"Board: {kb.get_current_board()} ({other_count} other board{'s' if other_count != 1 else ''} — "
-              f"`hermes kanban boards list`)\n")
+        print(f"看板：{kb.get_current_board()}（另有 {other_count} 个看板——"
+              f"`hermes kanban boards list`）\n")
     if not tasks:
-        print("(no matching tasks)")
+        print("（没有匹配的任务）")
         return 0
     for t in tasks:
         print(_fmt_task_line(t))
@@ -463,7 +461,7 @@ def _print_diagnostics(diags, indent: str, *, with_kind: bool) -> None:
             bits = [f"{k}={','.join(str(x) for x in v)}" if isinstance(v, list) else f"{k}={v}"
                     for k, v in d.data.items()]
             if bits:
-                print(f"{indent}   data: {' | '.join(bits)}")
+                print(f"{indent}   数据：{' | '.join(bits)}")
         for a in d.actions:
             if a.suggested:
                 print(f"{indent}   → {a.label}")
@@ -486,7 +484,7 @@ def _cmd_show(args: argparse.Namespace) -> int:
     with kbc.connect_closing() as conn:
         task = kb.get_task(conn, args.task_id)
         if not task:
-            return _err(f"no such task: {args.task_id}")
+            return _err(f"无此任务：{args.task_id}")
         comments = kb.list_comments(conn, args.task_id)
         events = kb.list_events(conn, args.task_id)
         parents = kb.parent_ids(conn, args.task_id)
@@ -537,7 +535,7 @@ def _cmd_show(args: argparse.Namespace) -> int:
     from hermes_cli import kanban_diagnostics as kd
     diags = kd.compute_task_diagnostics(task, events, runs, graph=graph)
     if diags:
-        print(f"\n  Diagnostics ({len(diags)}):")
+        print(f"\n  诊断（{len(diags)}）：")
         _print_diagnostics(diags, "    ", with_kind=False)
     if task.started_at:
         field("started", _fmt_ts(task.started_at))
@@ -548,21 +546,21 @@ def _cmd_show(args: argparse.Namespace) -> int:
     if children:
         field("children", ", ".join(children))
     if task.body:
-        _print_section("Body:", [task.body])
+        _print_section("正文：", [task.body])
     if task.result:
-        _print_section("Result:", [task.result])
+        _print_section("结果：", [task.result])
     elif latest_summary:
-        _print_section("Latest summary:", [latest_summary])
+        _print_section("最新摘要：", [latest_summary])
     if comments:
-        _print_section(f"Comments ({len(comments)}):",
+        _print_section(f"评论（{len(comments)}）：",
                        (f"  [{_fmt_ts(c.created_at)}] {c.author}: {c.body}" for c in comments))
     if events:
-        _print_section(f"Events ({len(events)}):", (
+        _print_section(f"事件（{len(events)}）：", (
             f"  [{_fmt_ts(e.created_at)}]{f' [run {e.run_id}]' if e.run_id else ''} {e.kind}"
             f"{f' {e.payload}' if e.payload else ''}" for e in events[-20:]))
     if runs:
         print()
-        print(f"Runs ({len(runs)}):")
+        print(f"运行记录（{len(runs)}）：")
         for r in runs:
             # Clamp to 0 so NTP backward-jumps don't print negative seconds.
             elapsed = max(0, r.ended_at - r.started_at) if r.ended_at else None
@@ -580,8 +578,8 @@ def _cmd_assign(args: argparse.Namespace) -> int:
     profile = _none_profile(args.profile)
     with kbc.connect_closing() as conn:
         ok = kb.assign_task(conn, args.task_id, profile)
-    return _ok_or_err(ok, f"no such task: {args.task_id}",
-                      f"Assigned {args.task_id} to {profile or '(unassigned)'}")
+    return _ok_or_err(ok, f"无此任务：{args.task_id}",
+                      f"已将 {args.task_id} 分配给 {profile or '(未分配)'}")
 
 
 def _cmd_set_model(args: argparse.Namespace) -> int:
@@ -595,20 +593,20 @@ def _cmd_set_model(args: argparse.Namespace) -> int:
     except (ValueError, RuntimeError) as exc:
         return _err(f"kanban: {exc}", 2)
     if not ok:
-        return _err(f"no such task: {args.task_id}")
+        return _err(f"无此任务：{args.task_id}")
     if model:
         label = f"{provider}:{model}" if provider else model
-        print(f"Set model override on {args.task_id}: {label} (applies on next dispatch)")
+        print(f"已为 {args.task_id} 设置模型覆盖：{label}（下次调度时生效）")
     else:
-        print(f"Cleared model override on {args.task_id} (worker uses its profile default)")
+        print(f"已清除 {args.task_id} 的模型覆盖（工作节点将使用其 profile 默认值）")
     return 0
 
 
 def _cmd_reclaim(args: argparse.Namespace) -> int:
     with kbc.connect_closing() as conn:
         ok = kb.reclaim_task(conn, args.task_id, reason=getattr(args, "reason", None))
-    return _ok_or_err(ok, f"cannot reclaim {args.task_id} (not running or unknown id)",
-                      f"Reclaimed {args.task_id}")
+    return _ok_or_err(ok, f"无法回收 {args.task_id}（未在运行或未知 id）",
+                      f"已回收 {args.task_id}")
 
 
 def _cmd_reassign(args: argparse.Namespace) -> int:
@@ -618,8 +616,8 @@ def _cmd_reassign(args: argparse.Namespace) -> int:
         ok = kb.reassign_task(conn, args.task_id, profile, reclaim_first=reclaim, reason=getattr(args, "reason", None))
     return _ok_or_err(
         ok,
-        f"cannot reassign {args.task_id} (unknown id, or still running — pass --reclaim to release first)",
-        f"Reassigned {args.task_id} to {profile or '(unassigned)'}" + (" (claim reclaimed)" if reclaim else ""),
+        f"无法重新分配 {args.task_id}（未知 id，或仍在运行——先传 --reclaim 释放）",
+        f"已将 {args.task_id} 重新分配给 {profile or '(未分配)'}" + ("（认领已回收）" if reclaim else ""),
     )
 
 
@@ -649,7 +647,7 @@ def _cmd_diagnostics(args: argparse.Namespace) -> int:
         if getattr(args, "task", None):
             task = kb.get_task(conn, args.task)
             if task is None:
-                return _err(f"no such task: {args.task}")
+                return _err(f"无此任务：{args.task}")
             diags_by_task = {args.task: kd.compute_task_diagnostics(
                 task, kb.list_events(conn, args.task), kb.list_runs(conn, args.task),
                 graph=kb.task_graph_context(conn, args.task), config=diag_config)}
@@ -696,15 +694,15 @@ def _cmd_diagnostics(args: argparse.Namespace) -> int:
 
     print(f"kanban.dispatch_profiles: {allowlist}")
     if not diags_by_task:
-        print("No active diagnostics on this board.")
+        print("此看板上没有活跃诊断。")
         return 0
 
     total = sum(len(dl) for dl in diags_by_task.values())
-    print(f"{total} active diagnostic(s) across {len(diags_by_task)} task(s):\n")
+    print(f"{total} 条活跃诊断，涉及 {len(diags_by_task)} 个任务：\n")
     for tid, dl in diags_by_task.items():
         m = meta.get(tid, {})
-        print(f"  {tid}  {m.get('status') or '?':8s}  @{m.get('assignee') or '(unassigned)':18s}  "
-              f"{m.get('title') or '(untitled)'}")
+        print(f"  {tid}  {m.get('status') or '?':8s}  @{m.get('assignee') or '(未分配)':18s}  "
+              f"{m.get('title') or '(无标题)'}")
         _print_diagnostics(dl, "    ", with_kind=True)
         print()
     return 0
@@ -734,8 +732,8 @@ def _cmd_link(args: argparse.Namespace) -> int:
 def _cmd_unlink(args: argparse.Namespace) -> int:
     with kbc.connect_closing() as conn:
         ok = kb.unlink_tasks(conn, args.parent_id, args.child_id)
-    return _ok_or_err(ok, f"No such link: {args.parent_id} -> {args.child_id}",
-                      f"Unlinked {args.parent_id} -> {args.child_id}")
+    return _ok_or_err(ok, f"无此链接：{args.parent_id} -> {args.child_id}",
+                      f"已解除链接 {args.parent_id} -> {args.child_id}")
 
 
 def _cmd_claim(args: argparse.Namespace) -> int:
@@ -744,12 +742,12 @@ def _cmd_claim(args: argparse.Namespace) -> int:
         if task is None:
             existing = kb.get_task(conn, args.task_id)
             if existing is None:
-                return _err(f"no such task: {args.task_id}")
-            return _err(f"cannot claim {args.task_id}: status={existing.status} "
+                return _err(f"无此任务：{args.task_id}")
+            return _err(f"无法认领 {args.task_id}：status={existing.status} "
                         f"lock={existing.claim_lock or '(none)'}")
         workspace = kbw.resolve_workspace(task)
         kbw.set_workspace_path(conn, task.id, str(workspace))
-    print(f"Claimed {task.id}\nWorkspace: {workspace}")
+    print(f"已认领 {task.id}\n工作区：{workspace}")
     return 0
 
 
@@ -757,14 +755,14 @@ def _cmd_comment(args: argparse.Namespace) -> int:
     body = " ".join(args.text).strip()
     if args.max_len is not None:
         if args.max_len < 1:
-            return _err("kanban: --max-len must be positive", 2)
+            return _err("kanban: --max-len 必须为正数", 2)
         if len(body) > args.max_len:
-            suffix = f"\n\n[trimmed to {args.max_len} chars by --max-len]"
+            suffix = f"\n\n[因 --max-len 截断至 {args.max_len} 个字符]"
             body = body[: max(0, args.max_len - len(suffix))].rstrip() + suffix
     author = args.author or _profile_author()
     with kbc.connect_closing() as conn:
         kb.add_comment(conn, args.task_id, author, body)
-    print(f"Comment added to {args.task_id}")
+    print(f"已向 {args.task_id} 添加评论")
     return 0
 
 
@@ -776,7 +774,7 @@ def _cmd_attach(args: argparse.Namespace) -> int:
 
     src = Path(args.path).expanduser()
     if not src.is_file():
-        return _err(f"kanban: no such file: {src}")
+        return _err(f"kanban: 无此文件：{src}")
     data = src.read_bytes()
     name = args.name or src.name
     content_type = args.content_type or mimetypes.guess_type(name)[0]
@@ -787,24 +785,24 @@ def _cmd_attach(args: argparse.Namespace) -> int:
                                                uploaded_by=uploaded_by)
     except kb.AttachmentTooLarge as exc:
         return _err(f"kanban: {exc}")
-    print(f"Attached {name} to {args.task_id} (attachment {att_id}, {len(data)} bytes)")
+    print(f"已将 {name} 附加到 {args.task_id}（附件 {att_id}，{len(data)} 字节）")
     return 0
 
 
 def _cmd_attachments(args: argparse.Namespace) -> int:
     with kbc.connect_closing() as conn:
         if kb.get_task(conn, args.task_id) is None:
-            return _err(f"no such task: {args.task_id}")
+            return _err(f"无此任务：{args.task_id}")
         atts = kb.list_attachments(conn, args.task_id)
     if _json_out(args, [_obj_dict(a, _ATTACHMENT_FIELDS) for a in atts], ascii=True):
         return 0
     if not atts:
-        print(f"No attachments on {args.task_id}")
+        print(f"{args.task_id} 上没有附件")
         return 0
-    print(f"Attachments on {args.task_id}:")
+    print(f"{args.task_id} 的附件：")
     for a in atts:
         ct = a.content_type or "-"
-        print(f"  [{a.id}] {a.filename}  ({a.size} bytes, {ct}, by {a.uploaded_by or '-'})")
+        print(f"  [{a.id}] {a.filename}  （{a.size} 字节，{ct}，上传者 {a.uploaded_by or '-'}）")
         print(f"        {a.stored_path}")
     return 0
 
@@ -813,15 +811,15 @@ def _cmd_attach_rm(args: argparse.Namespace) -> int:
     with kbc.connect_closing() as conn:
         removed = kb.delete_attachment(conn, args.attachment_id)
     if removed is None:
-        return _err(f"no such attachment: {args.attachment_id}")
-    print(f"Deleted attachment {args.attachment_id} ({removed.filename}) from {removed.task_id}")
+        return _err(f"无此附件：{args.attachment_id}")
+    print(f"已从 {removed.task_id} 删除附件 {args.attachment_id}（{removed.filename}）")
     return 0
 
 
 def _worker_run_id_for(task_id: str) -> Optional[int]:
     env_tid = os.environ.get("HERMES_KANBAN_TASK")
     if env_tid and env_tid != task_id:
-        raise ValueError(f"worker is scoped to task {env_tid}; refusing to mutate {task_id}")
+        raise ValueError(f"工作节点被限定于任务 {env_tid}；拒绝修改 {task_id}")
     raw = os.environ.get("HERMES_KANBAN_RUN_ID")
     if os.environ.get("HERMES_KANBAN_TASK") != task_id or not raw:
         return None
@@ -891,10 +889,10 @@ def _goal_gate_error(conn, tid: str, evidence: str, handoff: str, blocked_hint: 
     None to allow."""
     verdict, rejection = _goal_mode_handoff_rejection(kb.get_task(conn, tid), evidence)
     if verdict == "blocked":
-        return (f"kanban: goal {handoff} of {tid} rejected: judge ruled "
-                f"the goal unachievable — {rejection}. {blocked_hint}")
+        return (f"kanban: {tid} 的{handoff}被拒绝：评判器判定"
+                f"目标不可达成——{rejection}。{blocked_hint}")
     if rejection is not None:
-        return f"kanban: goal {handoff} of {tid} rejected by judge: {rejection}. {continue_hint}"
+        return f"kanban: {tid} 的{handoff}被评判器拒绝：{rejection}。{continue_hint}"
     return None
 
 
@@ -907,9 +905,9 @@ def _cmd_complete(args: argparse.Namespace) -> int:
     raw_meta = getattr(args, "metadata", None)
     # Handoff fields are per-run; refuse to copy them across N runs.
     if len(ids) > 1 and (summary or raw_meta):
-        return _err("kanban: --summary / --metadata are per-task and can't be used "
-                    "with multiple ids (would apply the same handoff to every task). "
-                    "Complete tasks one at a time, or drop the flags for the bulk close.", 2)
+        return _err("kanban: --summary / --metadata 是按任务独立的，不能与多个 id 一起使用"
+                    "（否则会把同一份交接套用到每个任务）。"
+                    "请逐个完成任务，或在批量关闭时去掉这些标志。", 2)
     metadata, rc = _parse_metadata_flag(raw_meta)
     if rc:
         return rc
@@ -917,21 +915,21 @@ def _cmd_complete(args: argparse.Namespace) -> int:
     with kbc.connect_closing() as conn:
         def op(tid):
             gate_err = _goal_gate_error(
-                conn, tid, (summary or args.result or "").strip(), "completion",
-                "Re-scope with kanban edit, or record the block with kanban block instead of completing.",
-                "Provide evidence matching the task's acceptance criteria.")
+                conn, tid, (summary or args.result or "").strip(), "完成",
+                "用 kanban edit 重新界定范围，或改用 kanban block 记录阻塞，而不是完成。",
+                "请提供与任务验收标准相符的证据。")
             if gate_err:
                 fail_msg[tid] = gate_err
                 return False
-            fail_msg[tid] = f"cannot complete {tid} (unknown id or terminal state)"
+            fail_msg[tid] = f"无法完成 {tid}（未知 id 或已处于终态）"
             try:
                 done = kb.complete_task(conn, tid, result=args.result, summary=summary, metadata=metadata,
                                         expected_run_id=_worker_run_id_for(tid),
                                         force=bool(getattr(args, "force", False)))
             except kb.LiveClaimError:
-                fail_msg[tid] = (f"cannot complete {tid}: a live worker is running it. Wait for the "
-                                 f"worker, `hermes kanban reclaim {tid}` to release it, or re-run with "
-                                 f"--force to close its run and complete anyway.")
+                fail_msg[tid] = (f"无法完成 {tid}：有 worker 正在运行它。请等该 worker 结束、"
+                                 f"用 `hermes kanban reclaim {tid}` 释放认领，或加 `--force` "
+                                 f"关闭其运行并强制完成。")
                 return False
             except kb.EmptyCompletionError as empty_err:
                 fail_msg[tid] = (f"cannot complete {tid}: {empty_err}. Pass --result/--summary "
@@ -947,7 +945,7 @@ def _cmd_complete(args: argparse.Namespace) -> int:
                                      f"complete the parents first, or `hermes kanban unlink <parent> {tid}`.")
             return done
 
-        return _bulk_apply(ids, op, lambda tid: f"Completed {tid}", fail_msg.__getitem__)
+        return _bulk_apply(ids, op, lambda tid: f"已完成 {tid}", fail_msg.__getitem__)
 
 
 def _cmd_edit(args: argparse.Namespace) -> int:
@@ -1020,12 +1018,12 @@ def _cmd_schedule(args: argparse.Namespace) -> int:
     with kbc.connect_closing() as conn:
         op = _commented(conn, reason, author, "SCHEDULED", lambda tid: kb.schedule_task(
             conn, tid, reason=reason, expected_run_id=_worker_run_id_for(tid)))
-        return _bulk_apply(ids, op, lambda tid: f"Scheduled {tid}{suffix}", lambda tid: f"cannot schedule {tid}")
+        return _bulk_apply(ids, op, lambda tid: f"已安排 {tid}{suffix}", lambda tid: f"无法安排 {tid}")
 
 
 def _cmd_unblock(args: argparse.Namespace) -> int:
     if os.environ.get("HERMES_KANBAN_TASK"):
-        return _err("kanban unblock is orchestrator-only; workers must hand off their assigned task")
+        return _err("kanban unblock 仅限编排器使用；工作节点必须交接其被分配的任务")
     ids, rc = _require_ids(args)
     if rc:
         return rc
@@ -1034,8 +1032,8 @@ def _cmd_unblock(args: argparse.Namespace) -> int:
     suffix = f": {reason}" if reason else ""
     with kbc.connect_closing() as conn:
         op = _commented(conn, reason, author, "UNBLOCK", lambda tid: kb.unblock_task(conn, tid))
-        return _bulk_apply(ids, op, lambda tid: f"Unblocked {tid}{suffix}",
-                           lambda tid: f"cannot unblock {tid} (not blocked/scheduled?)")
+        return _bulk_apply(ids, op, lambda tid: f"已解除阻塞 {tid}{suffix}",
+                           lambda tid: f"无法解除阻塞 {tid}（未处于阻塞/已安排状态？）")
 
 
 def _cmd_request_review(args: argparse.Namespace) -> int:
@@ -1046,19 +1044,19 @@ def _cmd_request_review(args: argparse.Namespace) -> int:
         return rc
     with kbc.connect_closing() as conn:
         gate_err = _goal_gate_error(
-            conn, tid, summary or "", "review handoff",
-            "Record the block with kanban block instead of requesting review.",
-            "Provide acceptance evidence matching the task.")
+            conn, tid, summary or "", "评审交接",
+            "改用 kanban block 记录阻塞，而不是请求评审。",
+            "请提供与该任务相符的验收证据。")
         if gate_err:
             return _err(gate_err)
         ok, reason = kb.request_review(
             conn, tid, summary=summary, metadata=metadata, reviewer=getattr(args, "reviewer", None),
             expected_run_id=_worker_run_id_for(tid), force=bool(getattr(args, "force", False)), with_reason=True)
         if not ok:
-            return _err(f"cannot request review for {tid}: {reason or 'not running/ready?'}")
+            return _err(f"无法为 {tid} 请求评审：{reason or '未在运行/未就绪？'}")
         persisted_run = kb.latest_run(conn, tid)
         display_summary = persisted_run.summary if persisted_run else None
-        print(f"Requested review for {tid}" + (f": {display_summary}" if display_summary else ""))
+        print(f"已为 {tid} 请求评审" + (f"：{display_summary}" if display_summary else ""))
     return 0
 
 
@@ -1068,8 +1066,8 @@ def _cmd_request_changes(args: argparse.Namespace) -> int:
     with kbc.connect_closing() as conn:
         ok, detail = kb.request_changes(conn, tid, reason=reason, expected_run_id=_worker_run_id_for(tid))
         if not ok:
-            return _err(f"cannot request changes for {tid}: {detail or 'invalid review state'}")
-        print(f"Requested changes for {tid}" + (f"; routed to {detail}" if detail else ""))
+            return _err(f"无法为 {tid} 请求修改：{detail or '无效的评审状态'}")
+        print(f"已为 {tid} 请求修改" + (f"；已转给 {detail}" if detail else ""))
     return 0
 
 
@@ -1090,8 +1088,8 @@ def _cmd_reopen_review(args: argparse.Namespace) -> int:
                 kb.add_comment(conn, tid, author or "operator", f"CHANGES REQUESTED: {reason}")
             return True
 
-        return _bulk_apply(ids, op, lambda tid: f"Reopened {tid}{suffix}",
-                           lambda tid: f"cannot reopen {tid} (not in review?)")
+        return _bulk_apply(ids, op, lambda tid: f"已重新打开 {tid}{suffix}",
+                           lambda tid: f"无法重新打开 {tid}（不在评审中？）")
 
 
 def _cmd_promote(args: argparse.Namespace) -> int:
@@ -1114,14 +1112,14 @@ def _cmd_promote(args: argparse.Namespace) -> int:
         _print_json(results[0] if len(results) == 1 else results)
         return 0 if not failed else 1
 
-    tag = " (dry)" if dry_run else ""
-    label = "Would promote" if dry_run else "Promoted"
+    tag = "（试运行）" if dry_run else ""
+    label = "将提升" if dry_run else "已提升"
     suffix = f": {reason}" if reason else ""
     for r in results:
         if r["promoted"]:
             print(f"{label} {r['task_id']} -> ready{tag}{suffix}")
         else:
-            print(f"cannot promote {r['task_id']}: {r['error']}", file=sys.stderr)
+            print(f"无法提升 {r['task_id']}：{r['error']}", file=sys.stderr)
     return 0 if not failed else 1
 
 
@@ -1129,15 +1127,15 @@ def _cmd_archive(args: argparse.Namespace) -> int:
     ids = list(args.task_ids or [])
     purge_ids = list(getattr(args, "purge_ids", None) or [])
     if ids and purge_ids:
-        return _err("choose either task_ids to archive or --rm archived task_ids")
+        return _err("请选择要归档的 task_ids，或用 --rm 指定已归档的 task_ids")
     if not ids and not purge_ids:
         return _err("at least one task_id is required")
     with kbc.connect_closing() as conn:
         if purge_ids:
-            return _bulk_apply(purge_ids, lambda tid: kb.delete_archived_task(conn, tid), lambda tid: f"Deleted {tid}",
-                               lambda tid: f"cannot delete {tid} (must already be archived)")
+            return _bulk_apply(purge_ids, lambda tid: kb.delete_archived_task(conn, tid), lambda tid: f"已删除 {tid}",
+                               lambda tid: f"无法删除 {tid}（必须已归档）")
         return _bulk_apply(ids, lambda tid: kb.archive_task(conn, tid),
-                           lambda tid: f"Archived {tid}", lambda tid: f"cannot archive {tid}")
+                           lambda tid: f"已归档 {tid}", lambda tid: f"无法归档 {tid}")
 
 
 def _cmd_stats(args: argparse.Namespace) -> int:
@@ -1145,16 +1143,16 @@ def _cmd_stats(args: argparse.Namespace) -> int:
         stats = kb.board_stats(conn)
     if _json_out(args, stats):
         return 0
-    print("By status:")
+    print("按状态：")
     for k in ("triage", "todo", "scheduled", "ready", "running", "blocked", "done"):
         print(f"  {k:8s}  {stats['by_status'].get(k, 0)}")
     if stats["by_assignee"]:
-        print("\nBy assignee:")
+        print("\n按 assignee：")
         for who, counts in sorted(stats["by_assignee"].items()):
             print(f"  {who:20s}  {_fmt_counts(counts)}")
     age = stats["oldest_ready_age_seconds"]
     if age is not None:
-        print(f"\nOldest ready task age: {int(age)}s")
+        print(f"\n最早的 ready 任务已等待：{int(age)}s")
     return 0
 
 
@@ -1169,7 +1167,7 @@ def _cmd_notify_subscribe(args: argparse.Namespace) -> int:
     }
     with kbc.connect_closing() as conn:
         if kb.get_task(conn, args.task_id) is None:
-            return _err(f"no such task: {args.task_id}")
+            return _err(f"无此任务：{args.task_id}")
         kbn.add_notify_sub(
             conn, task_id=args.task_id, platform=args.platform, chat_id=args.chat_id,
             chat_type=args.chat_type, thread_id=args.thread_id, user_id=args.user_id,
@@ -1178,7 +1176,7 @@ def _cmd_notify_subscribe(args: argparse.Namespace) -> int:
             delivery_mode=getattr(args, "delivery_mode", None),
             delivery_metadata=delivery_metadata or None,
         )
-    print(f"Subscribed {args.platform}:{args.chat_id}" + (f":{args.thread_id}" if args.thread_id else "")
+    print(f"已订阅 {args.platform}:{args.chat_id}" + (f":{args.thread_id}" if args.thread_id else "")
           + f" to {args.task_id}")
     return 0
 
@@ -1189,7 +1187,7 @@ def _cmd_notify_list(args: argparse.Namespace) -> int:
     if _json_out(args, subs):
         return 0
     if not subs:
-        print("(no subscriptions)")
+        print("（无订阅）")
         return 0
     for s in subs:
         thr = f":{s['thread_id']}" if s.get("thread_id") else ""
@@ -1200,7 +1198,7 @@ def _cmd_notify_list(args: argparse.Namespace) -> int:
             f"  user_id_alt={s['user_id_alt']}" if s.get("user_id_alt") else "",
             "" if dmode == "notify" else f"  mode={dmode}",
         ))
-        print(f"  {s['task_id']:10s}  {s['platform']}:{s['chat_id']}{thr}  (since event {s['last_event_id']}){extras}")
+        print(f"  {s['task_id']:10s}  {s['platform']}:{s['chat_id']}{thr}  （自事件 {s['last_event_id']} 起）{extras}")
     return 0
 
 
@@ -1208,13 +1206,13 @@ def _cmd_notify_unsubscribe(args: argparse.Namespace) -> int:
     with kbc.connect_closing() as conn:
         ok = kbn.remove_notify_sub(conn, task_id=args.task_id, platform=args.platform, chat_id=args.chat_id,
                                   thread_id=args.thread_id)
-    return _ok_or_err(ok, "(no such subscription)", f"Unsubscribed from {args.task_id}")
+    return _ok_or_err(ok, "(无此订阅)", f"已取消订阅 {args.task_id}")
 
 
 def _cmd_log(args: argparse.Namespace) -> int:
     content = kb.read_worker_log(args.task_id, tail_bytes=args.tail)
     if content is None:
-        return _err(f"(no log for {args.task_id} — task may not have spawned yet)")
+        return _err(f"(没有 {args.task_id} 的日志——任务可能尚未启动)")
     sys.stdout.write(content)
     if not content.endswith("\n"):
         sys.stdout.write("\n")
@@ -1231,15 +1229,15 @@ def _cmd_runs(args: argparse.Namespace) -> int:
     if _json_out(args, [_obj_dict(r, _RUNS_RUN_FIELDS) for r in runs]):
         return 0
     if not runs:
-        print(f"(no runs yet for {args.task_id})")
+        print(f"（{args.task_id} 尚无运行记录）")
         return 0
-    print(f"{'#':3s}  {'OUTCOME':12s}  {'PROFILE':16s}  {'ELAPSED':>8s}  STARTED")
+    print(f"{'#':3s}  {'结果':12s}  {'PROFILE':16s}  {'耗时':>8s}  开始时间")
     for i, r in enumerate(runs, 1):
         end = r.ended_at or int(time.time())
         # Clamp to 0 so NTP backward-jumps don't print negative durations.
         elapsed = max(0, end - r.started_at)
         el = f"{elapsed}s" if elapsed < 60 else f"{elapsed // 60}m" if elapsed < 3600 else f"{elapsed / 3600:.1f}h"
-        outcome = r.outcome or ("(running)" if not r.ended_at else r.status)
+        outcome = r.outcome or ("(运行中)" if not r.ended_at else r.status)
         print(f"{i:3d}  {outcome:12s}  {(r.profile or '-'):16s}  {el:>8s}  {_fmt_ts(r.started_at)}")
         if r.summary:
             print(f"     → {r.summary.splitlines()[0][:100]}")
@@ -1264,19 +1262,19 @@ def _run_triage_sweep(args: argparse.Namespace, verb: str, mod, run_one, json_ke
     want_json = bool(getattr(args, "json", False))
     tenant = getattr(args, "tenant", None)
     if args.task_id and all_flag:
-        return _err("kanban: pass either a task id OR --all, not both", 2)
+        return _err("kanban: 请传入一个 task id 或 --all，二者只能选其一", 2)
     if all_flag:
         ids = mod.list_triage_ids(tenant=tenant)
         if not ids:
             if want_json:
                 print(json.dumps({json_key: 0, "total": 0}))
             else:
-                print("No triage tasks" + (f" for tenant {tenant!r}" if tenant else "") + ".")
+                print("没有 triage 任务" + (f"（tenant {tenant!r}）" if tenant else "") + "。")
             return 0
     elif args.task_id:
         ids = [args.task_id]
     else:
-        return _err(f"kanban: {verb} requires a task id or --all", 2)
+        return _err(f"kanban: {verb} 需要一个 task id 或 --all", 2)
 
     ok_count = 0
     for tid in ids:
@@ -1288,7 +1286,7 @@ def _run_triage_sweep(args: argparse.Namespace, verb: str, mod, run_one, json_ke
         elif outcome.ok:
             print(human_ok(outcome))
         else:
-            print(f"kanban: {verb} {outcome.task_id}: {outcome.reason}", file=sys.stderr)
+            print(f"kanban: {verb} {outcome.task_id}：{outcome.reason}", file=sys.stderr)
     if not all_flag:
         return 0 if ok_count == 1 else 1
     # --all: exit 1 only when every candidate failed (honest signal for scripts).
@@ -1296,7 +1294,7 @@ def _run_triage_sweep(args: argparse.Namespace, verb: str, mod, run_one, json_ke
 
 
 def _retitled_suffix(outcome) -> str:
-    return f" — retitled: {outcome.new_title!r}" if outcome.new_title else ""
+    return f"——已改标题：{outcome.new_title!r}" if outcome.new_title else ""
 
 
 def _cmd_specify(args: argparse.Namespace) -> int:
@@ -1305,14 +1303,14 @@ def _cmd_specify(args: argparse.Namespace) -> int:
 
     return _run_triage_sweep(args, "specify", spec, spec.specify_task, "specified",
                              ("task_id", "ok", "reason", "new_title"),
-                             lambda o: f"Specified {o.task_id} → todo{_retitled_suffix(o)}")
+                             lambda o: f"已细化 {o.task_id} → todo{_retitled_suffix(o)}")
 
 
 def _decompose_ok_line(o) -> str:
     if o.fanout and o.child_ids:
-        return (f"Decomposed {o.task_id} → {len(o.child_ids)} "
-                f"children ({', '.join(o.child_ids)}); root promoted to todo")
-    return f"Specified {o.task_id} → todo (no fanout){_retitled_suffix(o)}"
+        return (f"已分解 {o.task_id} → {len(o.child_ids)} "
+                f"个子任务（{', '.join(o.child_ids)}）；根任务已提升为 todo")
+    return f"已细化 {o.task_id} → todo（无扇出）{_retitled_suffix(o)}"
 
 
 def _cmd_decompose(args: argparse.Namespace) -> int:
@@ -1349,27 +1347,27 @@ _HANDLERS = {
 # --- Slash-command entry point (used by /kanban from CLI and gateway) ---
 
 _SLASH_KANBAN_HELP = """\
-**/kanban** — manage the shared task board.
+**/kanban** —— 管理共享任务看板。
 
-Common subcommands:
-  `list` (alias `ls`)   List tasks on the current board
-  `show <id>`           Task details + comments + events
-  `stats`               Per-status / per-assignee counts
-  `create <title>…`     Create a task (auto-subscribes you to events)
-  `comment <id> <msg>`  Append a comment
-  `attach <id> <path>`  Attach a local file; `attachments <id>` to list
-  `complete <id>…`      Mark task(s) done
-  `request-review <id>` Enter first-class review; `request-changes <id> <reason>` returns an active review to its implementer
-  `block <id> [reason]` Mark blocked; `schedule <id> [reason]` parks time-delay work; `unblock <id>` to revive
-  `assign <id> <profile>`  Reassign
-  `boards list`         Show all boards
-  `assignees`           Known profiles + counts
-  `context <id>`        Full worker-context dump
-  `runs <id>`           Attempt history
-  `log <id>`            Worker log
+常用子命令：
+  `list`（别名 `ls`）   列出当前看板上的任务
+  `show <id>`           任务详情 + 评论 + 事件
+  `stats`               按状态 / 按 assignee 计数
+  `create <title>…`     创建任务（自动为你订阅事件）
+  `comment <id> <msg>`  追加评论
+  `attach <id> <path>`  附加本地文件；`attachments <id>` 列出
+  `complete <id>…`      将任务标记为完成
+  `request-review <id>` 进入正式评审；`request-changes <id> <reason>` 将进行中的评审退回给实现者
+  `block <id> [reason]` 标记阻塞；`schedule <id> [reason]` 暂存延时工作；`unblock <id>` 复活
+  `assign <id> <profile>`  重新分配
+  `boards list`         显示所有看板
+  `assignees`           已知 profile + 计数
+  `context <id>`        完整的工作节点上下文转储
+  `runs <id>`           尝试历史
+  `log <id>`            工作节点日志
 
-Run `/kanban <subcommand> -h` for arguments. \
-Read-only commands are safe while an agent is running.\
+运行 `/kanban <subcommand> -h` 查看参数。 \
+只读命令在代理运行期间也可安全使用。\
 """
 
 
@@ -1413,9 +1411,9 @@ def run_slash(rest: str) -> str:
         if exc.code in {0, None} and out:  # ``-h`` help dump
             return out
         body = err or out
-        return f"⚠ /kanban usage error\n{body}" if body else "⚠ /kanban usage error"
+        return f"⚠ /kanban 用法错误\n{body}" if body else "⚠ /kanban 用法错误"
     except argparse.ArgumentError as exc:
-        return f"⚠ /kanban usage error\n{_usage_for_error()}\n{exc}"
+        return f"⚠ /kanban 用法错误\n{_usage_for_error()}\n{exc}"
 
     with contextlib.redirect_stdout(buf_out), contextlib.redirect_stderr(buf_err):
         try:
@@ -1423,12 +1421,12 @@ def run_slash(rest: str) -> str:
         except SystemExit:
             pass
         except Exception as exc:
-            print(f"error: {exc}", file=sys.stderr)
+            print(f"错误：{exc}", file=sys.stderr)
 
     out, err = buf_out.getvalue().rstrip(), buf_err.getvalue().rstrip()
     if err and out:
         return f"{out}\n{err}"
-    return err if err else (out or "(no output)")
+    return err if err else (out or "(无输出)")
 
 
 # ---- BEGIN PLUGIN-COMPAT (revert-scheduled; see COMPAT_MANIFEST.md) ----

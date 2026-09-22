@@ -143,36 +143,36 @@ def build_blueprint_seed(blueprint) -> str:
 
 def _fmt_catalog() -> str:
     from cron.blueprint_catalog import CATALOG
-    lines = ["Automation Blueprints — `/blueprint <name>` and I'll ask you what I need:\n"]
+    lines = ["自动化 Blueprint —— `/blueprint <name>`，我会问你需要哪些信息：\n"]
     for r in CATALOG:
         lines.append(f"  • {r.key} — {r.title}")
         lines.append(f"    {r.description}")
     lines.append(
-        "\nTip: `/blueprint <name>` walks you through it. Power users can "
-        "pass values inline, e.g. `/blueprint morning-brief time=08:00`."
+        "\n提示：`/blueprint <name>` 会一步步引导你。熟手可以 "
+        "直接内联传值，例如 `/blueprint morning-brief time=08:00`。"
     )
     return "\n".join(lines)
 
 
 def _fmt_candidates(query: str, candidates: List[Any]) -> str:
-    lines = [f"'{query}' matches several blueprints — which one?\n"]
+    lines = [f"'{query}' 匹配多个 blueprint —— 选哪一个？\n"]
     lines.extend(f"  • {r.key} — {r.title}" for r in candidates)
-    lines.append("\nRun `/blueprint <name>` with one of the names above.")
+    lines.append("\n用上面的某个名字运行 `/blueprint <name>`。")
     return "\n".join(lines)
 
 
 def _fmt_no_match(query: str) -> str:
     from cron.blueprint_catalog import CATALOG
     close = difflib.get_close_matches((query or "").lower(), [r.key for r in CATALOG], n=3, cutoff=0.4)
-    msg = f"No automation blueprint matches '{query}'."
+    msg = f"没有匹配 '{query}' 的自动化 blueprint。"
     if close:
-        msg += " Did you mean: " + ", ".join(close) + "?"
-    return msg + " Run /blueprint to see the catalog."
+        msg += " 你是不是想找：" + "、".join(close) + "？"
+    return msg + " 运行 /blueprint 查看目录。"
 
 
 def _manage_hint(surface: str) -> str:
     """/cron is CLI-only; on gateway platforms jobs are managed via the agent (cronjob tool) or dashboard."""
-    return "Manage it with /cron." if surface == "cli" else "Ask me to list, pause, or remove it any time."
+    return "用 /cron 管理它。" if surface == "cli" else "随时叫我列出、暂停或删除它。"
 
 
 def handle_blueprint_command(
@@ -189,7 +189,7 @@ def handle_blueprint_command(
         from cron.blueprint_catalog import fill_blueprint, BlueprintFillError
     except Exception as e:  # pragma: no cover - import guard
         logger.debug("blueprint catalog import failed: %s", e)
-        return BlueprintCommandResult("Automation Blueprints are unavailable in this build.")
+        return BlueprintCommandResult("此版本不支持自动化 Blueprint。")
 
     try:
         tokens = shlex.split(args or "")
@@ -208,7 +208,7 @@ def handle_blueprint_command(
 
     # `<name>` with no inline slot values -> seed the agent to ask for them.
     if not values:
-        text = f"Setting up '{blueprint.title}' ({_humanize_schedule(blueprint)}). I'll ask you a couple of things…"
+        text = f"正在设置「{blueprint.title}」（{_humanize_schedule(blueprint)}）。我会问你几个问题……"
         return BlueprintCommandResult(text, agent_seed=build_blueprint_seed(blueprint))
 
     # `<name> slot=val …` -> fill + create directly (deterministic shortcut).
@@ -216,8 +216,8 @@ def handle_blueprint_command(
         spec = fill_blueprint(blueprint, values, origin=_resolve_origin(origin))
     except BlueprintFillError as e:
         return BlueprintCommandResult(
-            f"Can't set up '{blueprint.title}': {e}\n"
-            f"Or just run /blueprint {blueprint.key} and I'll ask you for the values."
+            f"无法设置「{blueprint.title}」：{e}\n"
+            f"或者直接运行 /blueprint {blueprint.key}，我来问你要这些值。"
         )
 
     try:
@@ -227,11 +227,11 @@ def handle_blueprint_command(
         return BlueprintCommandResult(e.user_message())
     except Exception as e:
         logger.debug("blueprint create_job failed: %s", e)
-        return BlueprintCommandResult(f"Failed to create the job: {e}")
+        return BlueprintCommandResult(f"创建任务失败：{e}")
 
     sched = job.get("schedule_display") or spec.get("schedule", "")
     return BlueprintCommandResult(
-        f"Scheduled '{blueprint.title}'"
-        + (f" ({sched})" if sched else "")
-        + f", delivering to {spec.get('deliver', 'origin')}. {_manage_hint(surface)}"
+        f"已排定「{blueprint.title}」"
+        + (f"（{sched}）" if sched else "")
+        + f"，投递到 {spec.get('deliver', 'origin')}。{_manage_hint(surface)}"
     )

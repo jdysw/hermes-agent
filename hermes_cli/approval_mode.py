@@ -50,17 +50,17 @@ def run_approval_mode_command(requested_mode: Optional[str]) -> ApprovalModeResu
         with redirect_stdout(output), redirect_stderr(output):
             set_config_value("approvals.mode", requested)
     except SystemExit:
-        detail = output.getvalue().strip() or "Approval mode is managed and cannot be changed."
+        detail = output.getvalue().strip() or "审批模式由托管设置管理，无法更改。"
         return ApprovalModeResult(False, current, False, detail)
     except Exception as exc:
-        return ApprovalModeResult(False, current, False, f"Failed to save approval mode: {exc}")
+        return ApprovalModeResult(False, current, False, f"保存审批模式失败：{exc}")
 
     effective = _effective_mode()
     if effective != requested:
         return ApprovalModeResult(
             False, effective, False,
-            f"Approval mode remains {effective}; the requested value did not become effective.",
+            f"审批模式仍为 {effective}；请求的值未生效。",
         )
     return ApprovalModeResult(
-        True, effective, effective != current, f"Approval mode: {effective} (persistent profile setting).",
+        True, effective, effective != current, f"审批模式：{effective}（持久化的 profile 设置）。",
     )

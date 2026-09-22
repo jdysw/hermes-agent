@@ -475,7 +475,7 @@ class TestPlatformSlashCommand:
         out = await runner._handle_platform_command(self._make_event("/platform list"))
         assert "discord" in out
         assert "whatsapp" in out
-        assert "PAUSED" in out
+        assert "已暂停" in out
         assert "not paired" in out
 
     @pytest.mark.asyncio
@@ -489,7 +489,7 @@ class TestPlatformSlashCommand:
         out = await runner._handle_platform_command(
             self._make_event("/platform pause whatsapp")
         )
-        assert "paused" in out.lower()
+        assert "已暂停" in out
         assert runner._failed_platforms[Platform.WHATSAPP]["paused"] is True
 
 

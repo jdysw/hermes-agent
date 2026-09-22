@@ -58,10 +58,10 @@ class TestCronStatusHeartbeatGuard:
             cron_mod.cron_status()
 
         stdout = capsys.readouterr().out
-        assert "⚠ Gateway is running but the cron ticker has not reported a heartbeat" in stdout
-        assert "Cron jobs will NOT fire" in stdout
+        assert "⚠ 网关正在运行，但定时任务 ticker 尚未上报心跳" in stdout
+        assert "定时任务不会触发" in stdout
         # Must NOT show the green ✓
-        assert "✓ Gateway is running" not in stdout
+        assert "✓ 网关正在运行" not in stdout
 
     def test_fresh_heartbeat_shows_green_checkmark(self, monkeypatch, capsys):
         from hermes_cli import cron as cron_mod
@@ -75,7 +75,7 @@ class TestCronStatusHeartbeatGuard:
             cron_mod.cron_status()
 
         stdout = capsys.readouterr().out
-        assert "✓ Gateway is running — cron jobs will fire automatically" in stdout
+        assert "✓ 网关正在运行 —— 定时任务将自动触发" in stdout
         assert "⚠" not in stdout
 
 
@@ -178,8 +178,8 @@ class TestCronStatusMissingHeartbeat:
             cron_cli.cron_status()
 
         text = out.getvalue()
-        assert "has not reported a heartbeat" in text or "no heartbeat" in text.lower()
-        assert "will fire" not in text.lower() or "will NOT fire" in text
+        assert "尚未上报心跳" in text or "无心跳" in text
+        assert "不会触发" in text
 
     def test_missing_heartbeat_green_when_gateway_just_started(self, tmp_cron_dir, capsys, monkeypatch):
         import io
@@ -208,5 +208,5 @@ class TestCronStatusMissingHeartbeat:
             cron_cli.cron_status()
 
         text = out.getvalue()
-        assert "will fire" in text or "running" in text
-        assert "never ticked" not in text.lower()
+        assert "将自动触发" in text or "正在运行" in text
+        assert "从未 tick" not in text

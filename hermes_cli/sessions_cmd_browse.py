@@ -3,7 +3,7 @@ delete-with-confirmation; numbered-list fallback when curses is unavailable (Win
 
 from typing import Optional
 
-from hermes_cli.timefmt import relative_time as _relative_time
+from hermes_cli.timefmt import relative_time as _relative_time, pad_display as _pad_display
 
 
 def _session_status_tag(status: Optional[str]) -> str:
@@ -228,9 +228,9 @@ def _fallback_picker(sessions: list) -> Optional[str]:
             idx = int(val) - 1
             if 0 <= idx < len(sessions):
                 return sessions[idx]["id"]
-            print(f"  Invalid selection. Enter 1-{len(sessions)} or q to cancel.")
+            print(f"  选择无效。请输入 1-{len(sessions)} 或 q 取消。")
         except ValueError:
-            print("  Invalid input. Enter a number or q to cancel.")
+            print("  输入无效。请输入编号或 q 取消。")
         except (KeyboardInterrupt, EOFError):
             print()
             return None
@@ -243,7 +243,7 @@ def _session_browse_picker(sessions: list, session_db=None) -> Optional[str]:
     empty) prompts y/n and deletes via ``SessionDB.delete_session``.
     """
     if not sessions:
-        print("No sessions found.")
+        print("未找到任何会话。")
         return None
     _annotate_session_statuses(sessions, session_db)
 

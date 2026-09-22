@@ -96,7 +96,7 @@ async def test_system_exit_from_turn_notifies_user_and_is_reraised():
         await adapter._process_message_background(event, build_session_key(event.source))
 
     assert adapter.sent, "platform send must be called on SystemExit"
-    assert "error" in adapter.sent[0].lower(), (
+    assert "错误" in adapter.sent[0], (
         f"notification should mention the error, got: {adapter.sent[0]!r}"
     )
 

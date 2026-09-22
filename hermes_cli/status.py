@@ -287,20 +287,20 @@ def _render_sessions(ctx):
         gateway_rows = []
 
     if gateway_rows:
-        _kv("Active:", f"{len(gateway_rows)} session(s)")
+        _kv("活动会话：", f"{len(gateway_rows)} 个")
         freshest = max((float(r.get("last_active") or 0) for r in gateway_rows), default=0.0)
         if freshest > 0:
-            from hermes_cli.timefmt import relative_time
-            print(f"  Last activity:{relative_time(freshest):>13}")
+            from hermes_cli.timefmt import pad_display, relative_time
+            print(f"  最后活动：{pad_display(relative_time(freshest), 13, 'right')}")
     elif not (sessions_file := get_hermes_home() / "sessions" / "sessions.json").exists():
-        _kv("Active:", 0)
+        _kv("活动会话：", 0)
     else:
         try:
             data = _load_json(sessions_file)
             entries = [k for k in data if not str(k).startswith("_")] if isinstance(data, dict) else []
-            _kv("Active:", f"{len(entries)} session(s)")
+            _kv("活动会话：", f"{len(entries)} 个")
         except Exception:
-            _kv("Active:", "(error reading sessions file)")
+            _kv("活动会话：", "（读取会话文件出错）")
 
     # Slot usage, only when max_concurrent_sessions is set. The cap is shared across CLI,
     # desktop/TUI and the messaging gateway, so the surface that gets rejected is rarely the one

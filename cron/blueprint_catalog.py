@@ -623,26 +623,34 @@ def blueprint_deeplink(blueprint: AutomationBlueprint, values: Optional[Dict[str
     return f"hermes://blueprint/{quote(blueprint.key)}{qs}"
 
 
+_WEEKDAY_ZH = {
+    "monday": "周一", "tuesday": "周二", "wednesday": "周三", "thursday": "周四",
+    "friday": "周五", "saturday": "周六", "sunday": "周日", "everyday": "每天",
+    "weekdays": "工作日",
+}
+
+
 def _humanize_schedule(blueprint: AutomationBlueprint) -> str:
     """A short human-readable description of when a blueprint runs (defaults)."""
     sched = blueprint.schedule_template
     if sched.startswith("*/"):
         every = _slot_default(blueprint, "interval_min") or sched.split("/")[1].split()[0]
-        return f"every {every} minutes"
+        return f"每 {every} 分钟"
     if "{interval_hours}" in sched:
         every = str(_slot_default(blueprint, "interval_hours") or "1")
-        scope = "weekdays, " if "* * 1-5" in sched else ""
-        return f"{scope}every hour" if every == "1" else f"{scope}every {every} hours"
+        scope = "工作日，" if "* * 1-5" in sched else ""
+        return f"{scope}每小时" if every == "1" else f"{scope}每 {every} 小时"
     time_slot = _slot(blueprint, type="time")
     when = time_slot.default if time_slot else None
     if "* * 1-5" in sched:
-        return f"weekdays at {when}" if when else "every weekday"
+        return f"工作日 {when}" if when else "每个工作日"
     if "{dow}" in sched:
         scope = _slot_default(blueprint, "day", "recurrence") or ""
-        if scope and when:
-            return f"{scope} at {when}"
-        return f"at {when}" if when else "on a schedule"
-    return f"daily at {when}" if when else "on a schedule"
+        scope_zh = _WEEKDAY_ZH.get(str(scope).lower(), scope)
+        if scope_zh and when:
+            return f"{scope_zh} {when}"
+        return f"{when}" if when else "按计划"
+    return f"每天 {when}" if when else "按计划"
 
 
 def blueprint_catalog_entry(blueprint: AutomationBlueprint) -> Dict[str, Any]:

@@ -15,56 +15,50 @@ def _flag(parser, *names, help, **kw):
 def build_sessions_parser(subparsers, *, cmd_sessions: Callable) -> None:
     """Attach the ``sessions`` subcommand to ``subparsers``."""
     sessions_parser = subparsers.add_parser(
-        "sessions", help="Manage session history (list, rename, export, prune, delete)",
-        description="View and manage the SQLite session store")
+        "sessions", help='管理会话历史（列出、重命名、导出、清理、删除）',
+        description='查看和管理 SQLite 会话存储')
     sessions_subparsers = sessions_parser.add_subparsers(dest="sessions_action")
 
-    sessions_list = sessions_subparsers.add_parser("list", help="List recent sessions")
-    sessions_list.add_argument("--source", help="Filter by source (cli, telegram, discord, etc.)")
-    sessions_list.add_argument("--limit", type=int, default=20, help="Max sessions to show")
+    sessions_list = sessions_subparsers.add_parser("list", help='列出最近的会话')
+    sessions_list.add_argument("--source", help='按来源筛选（cli、telegram、discord 等）')
+    sessions_list.add_argument("--limit", type=int, default=20, help='最多显示的会话数')
     sessions_list.add_argument("--workspace", metavar="NEEDLE",
-        help="Only sessions in one workspace: a git repo root or project dir "
-        "(matched by path substring or basename).")
+        help='仅限某个工作区内的会话：git 仓库根目录或项目目录（按路径子串或目录名匹配）。')
 
     _filter_args = (
-        ("--newer-than", dict(metavar="AGE", help="Only match sessions active within the last AGE "
-            "(e.g. '5h', '2d') or after an ISO timestamp")),
-        ("--before", dict(metavar="TIME", help="Only match sessions started before TIME "
-            "(duration ago like '5h', or ISO timestamp like '2026-07-05 14:30')")),
-        ("--after", dict(metavar="TIME", help="Only match sessions started at/after TIME "
-            "(duration ago like '5h', or ISO timestamp)")),
-        ("--source", dict(help="Only match sessions from this source")),
-        ("--title", dict(help="Only match sessions whose title contains this substring")),
-        ("--end-reason", dict(help="Only match sessions with this end reason")),
-        ("--cwd", dict(help="Only match sessions whose working directory is under this path")),
-        ("--min-messages", dict(type=int, help="Only match sessions with >= N messages")),
-        ("--max-messages", dict(type=int, help="Only match sessions with <= N messages")),
-        ("--model", dict(help="Only match sessions whose model name contains this substring "
-            "(e.g. 'sonnet', 'gpt-5', 'hermes')")),
-        ("--provider", dict(help="Only match sessions billed through this provider "
-            "(e.g. openrouter, anthropic, nous)")),
-        ("--user", dict(help="Only match sessions from this user ID")),
-        ("--chat-id", dict(help="Only match sessions from this chat/channel ID")),
-        ("--chat-type", dict(help="Only match sessions with this chat type (e.g. dm, group)")),
-        ("--branch", dict(help="Only match sessions whose git branch contains this substring")),
+        ("--newer-than", dict(metavar="AGE", help="仅匹配最近 AGE 内活跃的会话（如 '5h'、'2d'），或某个 ISO 时间戳之后的会话")),
+        ("--before", dict(metavar="TIME", help="仅匹配在 TIME 之前开始的会话（相对时长如 '5h'，或 ISO 时间戳如 '2026-07-05 14:30'）")),
+        ("--after", dict(metavar="TIME", help="仅匹配在 TIME 及之后开始的会话（相对时长如 '5h'，或 ISO 时间戳）")),
+        ("--source", dict(help='仅匹配来自此来源的会话')),
+        ("--title", dict(help='仅匹配标题包含此子串的会话')),
+        ("--end-reason", dict(help='仅匹配以此原因结束的会话')),
+        ("--cwd", dict(help='仅匹配工作目录位于此路径下的会话')),
+        ("--min-messages", dict(type=int, help='仅匹配消息数 >= N 的会话')),
+        ("--max-messages", dict(type=int, help='仅匹配消息数 <= N 的会话')),
+        ("--model", dict(help="仅匹配模型名包含此子串的会话（如 'sonnet'、'gpt-5'、'hermes'）")),
+        ("--provider", dict(help='仅匹配通过此提供方计费的会话（如 openrouter、anthropic、nous）')),
+        ("--user", dict(help='仅匹配来自此用户 ID 的会话')),
+        ("--chat-id", dict(help='仅匹配来自此聊天/频道 ID 的会话')),
+        ("--chat-type", dict(help='仅匹配此聊天类型的会话（如 dm、group）')),
+        ("--branch", dict(help='仅匹配 git 分支包含此子串的会话')),
         ("--min-tokens", dict(type=int,
-            help="Only match sessions with >= N total tokens (input+output)")),
+            help='仅匹配总 token 数 >= N 的会话（输入+输出）')),
         ("--max-tokens", dict(type=int,
-            help="Only match sessions with <= N total tokens (input+output)")),
+            help='仅匹配总 token 数 <= N 的会话（输入+输出）')),
         ("--min-cost", dict(type=float,
-            help="Only match sessions costing >= N USD (actual or estimated)")),
+            help='仅匹配费用 >= N 美元的会话（实际或估算）')),
         ("--max-cost", dict(type=float,
-            help="Only match sessions costing <= N USD (actual or estimated)")),
-        ("--min-tool-calls", dict(type=int, help="Only match sessions with >= N tool calls")),
-        ("--max-tool-calls", dict(type=int, help="Only match sessions with <= N tool calls")),
+            help='仅匹配费用 <= N 美元的会话（实际或估算）')),
+        ("--min-tool-calls", dict(type=int, help='仅匹配工具调用数 >= N 的会话')),
+        ("--max-tool-calls", dict(type=int, help='仅匹配工具调用数 <= N 的会话')),
         ("--dry-run", dict(action="store_true",
-            help="List matching sessions without changing anything")))
+            help='列出匹配的会话，不做任何更改')))
 
     def _add_session_filter_args(p, default_older_help):
         p.add_argument("--older-than", metavar="AGE", help=default_older_help)
         for flag, kw in _filter_args:
             p.add_argument(flag, **kw)
-        add_yes_flag(p, "Skip confirmation")
+        add_yes_flag(p, '跳过确认提示')
 
     sessions_export = sessions_subparsers.add_parser(
         "export", help="Export sessions to JSONL, Markdown, or QMD")
