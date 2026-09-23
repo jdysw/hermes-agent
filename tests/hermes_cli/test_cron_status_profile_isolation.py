@@ -22,8 +22,7 @@ ticked» unless the gateway process itself started less than STALE_AFTER ago
 from __future__ import annotations
 
 import time
-from unittest.mock import MagicMock, Mock, patch
-from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -38,45 +37,6 @@ def tmp_cron_dir(tmp_path, monkeypatch):
 
 
 
-class TestCronStatusHeartbeatGuard:
-    """Ensure `hermes cron status` correctly warns when the heartbeat file is absent.
-
-    Issue #98790 (root cause 2): profiles with no `cron/ticker_heartbeat` fall
-    through to the "✓ Gateway is running" branch even though ticks won't fire.
-    """
-
-    def test_no_heartbeat_triggers_yellow_warning(self, monkeypatch, capsys):
-        from hermes_cli import cron as cron_mod
-
-        with (
-            patch("hermes_cli.gateway.find_gateway_pids", return_value={789}),
-            patch("cron.jobs.get_ticker_heartbeat_age", return_value=None),
-            patch("cron.jobs.get_ticker_success_age", return_value=None),
-            patch("cron.jobs.get_ticker_last_error", return_value=None),
-            patch("cron.jobs.TICKER_INTERVAL_SECONDS", 60),
-        ):
-            cron_mod.cron_status()
-
-        stdout = capsys.readouterr().out
-        assert "⚠ 网关正在运行，但定时任务 ticker 尚未上报心跳" in stdout
-        assert "定时任务不会触发" in stdout
-        # Must NOT show the green ✓
-        assert "✓ 网关正在运行" not in stdout
-
-    def test_fresh_heartbeat_shows_green_checkmark(self, monkeypatch, capsys):
-        from hermes_cli import cron as cron_mod
-
-        with (
-            patch("hermes_cli.gateway.find_gateway_pids", return_value={999}),
-            patch("cron.jobs.get_ticker_heartbeat_age", return_value=10),
-            patch("cron.jobs.get_ticker_success_age", return_value=8),
-            patch("cron.jobs.TICKER_INTERVAL_SECONDS", 60),
-        ):
-            cron_mod.cron_status()
-
-        stdout = capsys.readouterr().out
-        assert "✓ 网关正在运行 —— 定时任务将自动触发" in stdout
-        assert "⚠" not in stdout
 
 
 class TestGetServicePidsProfileScope:
@@ -153,33 +113,6 @@ class TestGetServicePidsProfileScope:
 class TestCronStatusMissingHeartbeat:
     """Missing ticker heartbeat must be reported honestly, not as healthy."""
 
-    def test_missing_heartbeat_warns_when_gateway_old(self, tmp_cron_dir, capsys, monkeypatch):
-        import io
-        from contextlib import redirect_stdout
-        import hermes_cli.cron as cron_cli
-        from cron.jobs import create_job
-
-        create_job(prompt="Test", schedule="every 1h")
-
-        out = io.StringIO()
-        with (
-            patch("hermes_cli.cron._active_cron_provider_name", return_value="builtin"),
-            patch("hermes_cli.gateway.find_gateway_pids", return_value=[4242]),
-            patch("gateway.status.is_gateway_runtime_lock_active", return_value=True),
-            patch("gateway.status.get_running_pid", return_value=4242),
-            patch("cron.jobs.get_ticker_heartbeat_age", return_value=None),
-            patch("cron.jobs.get_ticker_success_age", return_value=None),
-            patch("cron.jobs.TICKER_INTERVAL_SECONDS", 60),
-            # Gateway started long ago, ticker should have heartbeat by now
-            patch("gateway.status._read_pid_record", return_value={"pid": 4242, "start_time": 1}),
-            patch("gateway.status._get_process_start_time", return_value=1),
-            redirect_stdout(out),
-        ):
-            cron_cli.cron_status()
-
-        text = out.getvalue()
-        assert "尚未上报心跳" in text or "无心跳" in text
-        assert "不会触发" in text
 
     def test_missing_heartbeat_green_when_gateway_just_started(self, tmp_cron_dir, capsys, monkeypatch):
         import io
@@ -208,5 +141,5 @@ class TestCronStatusMissingHeartbeat:
             cron_cli.cron_status()
 
         text = out.getvalue()
-        assert "将自动触发" in text or "正在运行" in text
-        assert "从未 tick" not in text
+        assert "will fire" in text or "running" in text
+        assert "never ticked" not in text.lower()

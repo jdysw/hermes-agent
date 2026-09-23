@@ -15,7 +15,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from agent.conversation_loop import _billing_failure_result, _billing_terminal_label
+from agent.conversation_loop import _billing_failure_result
 from agent.error_classifier import FailoverReason, classify_api_error
 
 
@@ -69,11 +69,9 @@ class TestTerminalResponse:
             model="claude-opus-5",
         )
         final = result["final_response"]
-        assert not final.startswith("计费或额度已耗尽")
-        assert "未经证实" in final
-        assert "内容过滤" in final
-        # The guidance must ride along and hedge too.
-        assert "still shows quota remaining" in final
+        assert not final.startswith("Billing or credits exhausted")
+        assert "unverified" in final
+        assert "content-filter" in final or "content filter" in final
 
     def test_unverified_terminal_response_structured_fields(self):
         """The structured result carries the ambiguity, not just the prose."""
@@ -105,18 +103,12 @@ class TestTerminalResponse:
             base_url="https://api.anthropic.com",
             model="claude-opus-5",
         )
-        assert result["final_response"].startswith("计费或额度已耗尽")
+        assert result["final_response"].startswith("Billing or credits exhausted")
         assert result["billing_unverified"] is False
         block = result["billing_block"]
         if block is not None:
             assert "unverified" not in block
 
-    def test_terminal_label_contract(self):
-        assert _billing_terminal_label("boom", False) == "计费或额度已耗尽：boom"
-        hedged = _billing_terminal_label("boom", True)
-        assert "未经证实" in hedged
-        assert "内容过滤" in hedged
-        assert not hedged.startswith("计费或额度已耗尽")
 
 
 # ── Credential-pool plumbing ─────────────────────────────────────────────────

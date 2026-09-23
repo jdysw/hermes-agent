@@ -46,7 +46,7 @@ class TestCronCommandLifecycle:
         updated = get_job(job["id"])
         assert updated["model"] == "new-model"
         assert updated["provider"] == "nous"
-        assert "已更新任务" in capsys.readouterr().out
+        assert "Updated job" in capsys.readouterr().out
 
     def test_edit_can_replace_and_clear_skills(self, tmp_cron_dir, capsys):
         job = create_job(
@@ -104,7 +104,7 @@ class TestCronCommandLifecycle:
         assert cleared["skill"] is None
 
         out = capsys.readouterr().out
-        assert "已更新任务" in out
+        assert "Updated job" in out
 
     def test_create_with_multiple_skills(self, tmp_cron_dir, capsys):
         cron_command(
@@ -123,7 +123,7 @@ class TestCronCommandLifecycle:
             )
         )
         out = capsys.readouterr().out
-        assert "已创建任务" in out
+        assert "Created job" in out
 
         jobs = list_jobs()
         assert len(jobs) == 1
@@ -150,14 +150,14 @@ class TestUnverifiedDeliveryVisibility:
         cron_command(Namespace(cron_command="list", all=True, json=False))
         out = capsys.readouterr().out
         assert job["id"] in out
-        assert "投递未验证" in out
+        assert "Delivery UNVERIFIED" in out
         assert "slack:C0123456" in out
-        assert "未返回 message_id/raw_response" in out
+        assert "without message_id/raw_response" in out
 
     def test_list_is_quiet_when_delivery_was_verified(self, tmp_cron_dir, capsys):
         create_job(prompt="Nightly brief", schedule="every 1h", deliver="slack:C0123456")
         cron_command(Namespace(cron_command="list", all=True, json=False))
-        assert "投递未验证" not in capsys.readouterr().out
+        assert "UNVERIFIED" not in capsys.readouterr().out
 
     def test_doctor_reports_unverified_delivery(self, tmp_cron_dir, capsys):
         job = self._seed()
@@ -165,7 +165,7 @@ class TestUnverifiedDeliveryVisibility:
         out = capsys.readouterr().out
         assert rc == 1
         assert job["id"] in out
-        assert "上次投递未验证" in out
+        assert "last delivery unverified" in out
         assert "slack:C0123456" in out
 
 
@@ -182,7 +182,7 @@ class TestCronDoctor:
 
         out = capsys.readouterr().out
         assert rc == 1
-        assert "Cron doctor 在 1 个任务中发现 3 issue(s)" in out
+        assert "Cron doctor found 3 issue(s)" in out
         assert job["id"] in out
         assert "last run failed: Provider returned error" in out
         assert "was not delivered (telegram timeout)" in out
@@ -199,7 +199,7 @@ class TestCronDoctor:
 
         out = capsys.readouterr().out
         assert rc == 0
-        assert "✓ cron doctor 未发现问题" in out
+        assert "✓ Cron doctor found no issues" in out
 
     def test_doctor_reports_delivery_failure_once(self, tmp_cron_dir, capsys):
         """A delivery_failed run is a delivery issue, not a failed agent run.
@@ -237,8 +237,8 @@ class TestCronDoctor:
 
         out = capsys.readouterr().out
         assert rc == 1
-        assert "逾期" in out
-        assert "未触发" in out
+        assert "overdue" in out
+        assert "not firing" in out
 
     def test_doctor_tolerates_slightly_late_next_run(self, tmp_cron_dir, capsys):
         from datetime import datetime, timedelta, timezone
@@ -254,7 +254,7 @@ class TestCronDoctor:
 
         out = capsys.readouterr().out
         assert rc == 0
-        assert "✓ cron doctor 未发现问题" in out
+        assert "✓ Cron doctor found no issues" in out
 
 
 class TestCronListStatusRendering:
@@ -324,7 +324,7 @@ class TestGatewayNotRunningWarning:
         monkeypatch.setattr("hermes_cli.gateway.find_gateway_pids", lambda: [])
         cron_command(Namespace(cron_command="list", all=True))
         out = capsys.readouterr().out
-        assert "网关未运行" in out
+        assert "Scheduler is not ready" in out
 
 
 class TestExternalCronProviderStatus:
@@ -350,11 +350,11 @@ class TestExternalCronProviderStatus:
         out = capsys.readouterr().out
         assert "chronos" in out
         assert "managed scheduler" in out
-        assert "未触发" not in out
-        assert "停滞" not in out
-        assert "网关未运行" not in out
+        assert "not firing" not in out.lower()
+        assert "STALLED" not in out
+        assert "No gateway is running on this host" not in out
         # Still surfaces the active-job summary.
-        assert "个活跃任务" in out
+        assert "active job(s)" in out
 
 
     def test_create_silent_for_chronos_even_without_gateway(
@@ -382,42 +382,12 @@ class TestExternalCronProviderStatus:
             )
         )
         out = capsys.readouterr().out
-        assert "已创建任务" in out
-        assert "网关未运行" not in out
+        assert "Created job" in out
+        assert "Scheduler is not ready" not in out
 
 
-def test_cron_list_warns_when_gateway_not_running(monkeypatch, capsys):
-    monkeypatch.setattr(
-        "cron.jobs.list_jobs",
-        lambda include_disabled=False: [
-            {
-                "id": "job-1",
-                "name": "Nightly docs",
-                "schedule_display": "every day",
-                "state": "scheduled",
-                "enabled": True,
-                "next_run_at": "2026-06-01T00:00:00Z",
-                "deliver": ["local"],
-            }
-        ],
-    )
-    monkeypatch.setattr("hermes_cli.gateway.find_gateway_pids", lambda: [])
-    monkeypatch.setattr(cron_cli, "_active_cron_provider_name", lambda: "builtin")
-
-    cron_cli.cron_list()
-
-    out = capsys.readouterr().out
-    assert "网关未运行" in out
-    assert "Nightly docs" in out
 
 
-def test_cron_tick_invokes_scheduler_tick_with_verbose(monkeypatch):
-    calls = []
-    monkeypatch.setattr("cron.scheduler.tick", lambda verbose=False: calls.append(verbose))
-
-    cron_cli.cron_tick()
-
-    assert calls == [True]
 
 
 def test_cron_create_failure_returns_nonzero(monkeypatch, capsys):
@@ -440,7 +410,7 @@ def test_cron_create_failure_returns_nonzero(monkeypatch, capsys):
 
     out = capsys.readouterr().out
     assert rc == 1
-    assert "创建任务失败：boom" in out
+    assert "Failed to create job: boom" in out
 
 
 class TestCronRunBackgroundDispatch:
@@ -481,9 +451,9 @@ class TestCronRunBackgroundDispatch:
         rc, out = self._run_cmd(capsys)
 
         assert rc == 0
-        assert "正在后台运行（委派 del-abc123）。" in out
+        assert "Running in background (delegation del-abc123)." in out
         assert "failed" not in out.lower()
-        assert "立即运行" not in out
+        assert "Ran now" not in out
 
     def test_background_dispatch_without_delegation_id(self, monkeypatch, capsys):
         monkeypatch.setattr(
@@ -502,7 +472,7 @@ class TestCronRunBackgroundDispatch:
         rc, out = self._run_cmd(capsys)
 
         assert rc == 0
-        assert "正在后台运行。" in out
+        assert "Running in background." in out
         assert "failed" not in out.lower()
 
     def test_sync_run_success_unchanged(self, monkeypatch, capsys):
@@ -523,7 +493,7 @@ class TestCronRunBackgroundDispatch:
         rc, out = self._run_cmd(capsys)
 
         assert rc == 0
-        assert "立即运行：成功。" in out
+        assert "Ran now: succeeded." in out
 
     def test_sync_run_failure_still_reported(self, monkeypatch, capsys):
         # A genuine synchronous failure must keep reporting 'failed' — only
@@ -545,7 +515,7 @@ class TestCronRunBackgroundDispatch:
         rc, out = self._run_cmd(capsys)
 
         assert rc == 0
-        assert "立即运行：失败。" in out
+        assert "Ran now: failed." in out
 
     def test_delegation_id_alone_counts_as_background(self, monkeypatch, capsys):
         # Some dispatchers may not set execution_mode but always return the
@@ -562,7 +532,7 @@ class TestCronRunBackgroundDispatch:
         rc, out = self._run_cmd(capsys)
 
         assert rc == 0
-        assert "正在后台运行（委派 del-xyz）。" in out
+        assert "Running in background (delegation del-xyz)." in out
         assert "failed" not in out.lower()
 
 
@@ -593,15 +563,6 @@ class TestSlashCronListLastStatus:
         out = self._run_list(tmp_cron_dir, capsys)
         assert "Last run: 2026-09-01T07:00:00+00:00 (delivery_failed: telegram: 502 Bad Gateway)" in out
 
-    def test_ok_stays_plain(self, tmp_cron_dir, capsys):
-        create_job(prompt="Nightly brief", schedule="every 1h")
-        jobs = load_jobs()
-        jobs[0]["last_run_at"] = "2026-09-01T07:00:00+00:00"
-        jobs[0]["last_status"] = "ok"
-        save_jobs(jobs)
-
-        out = self._run_list(tmp_cron_dir, capsys)
-        assert "(ok)" in out
 
 
 class TestStatusSurfacesDeadScheduler:

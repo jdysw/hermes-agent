@@ -180,6 +180,7 @@ export interface Translations {
       writeFailed: string
       refreshFailed: string
       disconnectNoAccount: string
+      disconnectRefused: string
     }
     add: {
       action: string
@@ -224,6 +225,7 @@ export interface Translations {
       removeServerBody: string
       appSwitch: (name: string) => string
       waysTitle: (name: string) => string
+      wayNotConnected: (name: string) => string
       wayHosted: string
       bothOn: (name: string) => string
       turnOffLocal: string
@@ -711,8 +713,10 @@ export interface Translations {
         catalogPinned: (name: string, sha: string) => string
         reviewedHeading: string
         reviewedIntro: string
-        restartToApply: string
-        restartNow: string
+        toolsConnected: (n: number) => string
+        skillsReady: (names: string[]) => string
+        nextChat: string
+        serverNotConnected: (server: string, reason: string) => string
         missingEnvAction: string
         alreadyInstalled: (name: string) => string
         desktopTarget: string
@@ -2605,6 +2609,12 @@ export interface Translations {
     projectEmpty: string
     projectLoadFailed: string
     noSessions: string
+    storageCorrupt: {
+      title: string
+      body: (profiles: string) => string
+      action: string
+      guide: string
+    }
     noFilterMatches: string
     projects: {
       showAllSessions: string
@@ -3094,6 +3104,13 @@ export interface Translations {
     everythingSkipped: string
     everythingRowFailed: string
     everythingFanoutFailedTitle: string
+    changeLogNew: string
+    changeLogFixed: string
+    changeLogFaster: string
+    changeLogImproved: string
+    changeLogOther: string
+    changeLogFallbackLabel: string
+    changeLogFallbackItem: string
     applyStatus: {
       preparing: string
       pulling: string
@@ -3648,6 +3665,14 @@ export interface Translations {
     }
   }
 
+  interfaceMode: {
+    title: string
+    hint: string
+    sessionNote: string
+    simple: { label: string; description: string }
+    advanced: { label: string; description: string }
+  }
+
   zones: {
     showTabStrip: string
     hideTabStrip: string
@@ -3864,6 +3889,29 @@ export interface Translations {
       lateAnswerTip: string
       lateAnswerHint: string
     }
+    catalogInstall: {
+      preparing: string
+      install: string
+      advanced: string
+      skip: string
+      installing: string
+      installed: string
+      notInstalled: string
+      failed: string
+      showNames: string
+      hideNames: string
+      skill: (name: string) => string
+      kind: { plugin: string; skill: string }
+      tier: { official: string; community: string }
+      targetProfile: (profile: string) => string
+      sendFailed: string
+      commitLabel: string
+      subdirLabel: string
+      securityHeading: string
+      scan: { passed: string; warnings: string; failed: string }
+      requirementsLabel: string
+      credentialsHeading: string
+    }
     mcpSetup: {
       installTitle: string
       enableTitle: string
@@ -3957,6 +4005,7 @@ export interface Translations {
     sudoTitle: string
     sudoDesc: string
     sudoCommandUnavailable: string
+    sudoInstallDesc: string
     sudoPlaceholder: string
     secretTitle: string
     secretDesc: string

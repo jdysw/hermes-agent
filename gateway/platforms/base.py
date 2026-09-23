@@ -259,25 +259,56 @@ def is_network_accessible(host: str) -> bool:
         return True
 
 
+# ``scutil --proxy`` is a fork+exec (~11 ms measured) and resolve_proxy_url runs it on the SEND path —
+# per chunk of an outbound message and per media attachment, not once per adapter. The answer is an
+# OS-level network setting that changes when someone edits Network Settings or joins a VPN, so it is
+# cached briefly rather than per call. The TTL is the staleness a proxy change can suffer; a send that
+# goes out on a stale answer fails and is retried, which is the same outcome as any transient proxy error.
+# No lock: a race costs one extra fork and both answers are equally current.
+_MACOS_PROXY_TTL_SECONDS = 60.0
+_macos_proxy_cache: "tuple[float, str | None] | None" = None
+
+
 def _detect_macos_system_proxy() -> str | None:
     """Read the macOS system HTTP(S) proxy via ``scutil --proxy``: ``http://host:port``
-    when an HTTP(S) proxy is enabled, else None (non-macOS or any subprocess error)."""
+    when an HTTP(S) proxy is enabled, else None (non-macOS or any subprocess error).
+
+    Memoised for ``_MACOS_PROXY_TTL_SECONDS``; call :func:`reset_macos_proxy_cache` to force a re-read.
+    """
+    global _macos_proxy_cache
+
     if sys.platform != "darwin":
         return None
+    cached = _macos_proxy_cache
+    now = time.monotonic()
+    if cached is not None and (now - cached[0]) < _MACOS_PROXY_TTL_SECONDS:
+        return cached[1]
     try:
         out = subprocess.check_output(["scutil", "--proxy"], timeout=3, text=True, encoding='utf-8',
                                       errors='replace', stderr=subprocess.DEVNULL)
     except Exception:
+        # Cache the failure too: a broken/slow scutil must not re-fork on every chunk.
+        _macos_proxy_cache = (now, None)
         return None
     props = {
         key.strip(): val.strip()
         for key, sep, val in (line.strip().partition(" : ") for line in out.splitlines()) if sep}
     # Prefer HTTPS, fall back to HTTP
+    resolved = None
     for enable_key, host_key, port_key in (
         ("HTTPSEnable", "HTTPSProxy", "HTTPSPort"), ("HTTPEnable", "HTTPProxy", "HTTPPort")):
         if props.get(enable_key) == "1" and props.get(host_key) and props.get(port_key):
-            return f"http://{props[host_key]}:{props[port_key]}"
-    return None
+            resolved = f"http://{props[host_key]}:{props[port_key]}"
+            break
+    _macos_proxy_cache = (now, resolved)
+    return resolved
+
+
+def reset_macos_proxy_cache() -> None:
+    """Drop the memoised ``scutil --proxy`` answer so the next call re-reads it."""
+    global _macos_proxy_cache
+
+    _macos_proxy_cache = None
 
 
 def should_bypass_proxy(target_hosts: str | list[str] | tuple[str, ...] | set[str] | None) -> bool:
@@ -2198,10 +2229,20 @@ class BasePlatformAdapter(ABC):
         release_scoped_lock(self._platform_lock_scope, identity)
         self._platform_lock_identity = None
 
+    # Plugin handler factories wired on the live native client: ``(plugin, qualname)`` keys, reset when
+    # the native client is rebuilt. ``None`` = ``connect()`` has not wired yet (class defaults so
+    # subclasses that skip ``super().__init__`` still re-wire safely).
+    _plugin_handler_native: Any = None
+    _plugin_handlers_wired: Optional[set] = None
+
     def _wire_plugin_handlers(self, native: Any = None) -> None:
         """Invoke plugin-registered native handler factories (``ctx.register_platform_handler``)
         with ``(native, adapter)``; adapters call this from ``connect()`` once the native
-        client exists. Each factory is isolated so a bad plugin can't block connecting."""
+        client exists and :meth:`rewire_plugin_handlers` re-runs it for plugins loaded later.
+        Idempotent per native client: a factory is keyed by ``(plugin, qualname)`` and skipped once
+        wired on this ``native`` (a force re-discovery hands back NEW function objects for the same
+        plugin, so identity alone would double-register). Each factory is isolated so a bad plugin
+        can't block connecting."""
         try:
             from hermes_cli.plugins import get_plugin_manager
             factories = get_plugin_manager().get_platform_handler_factories(
@@ -2209,13 +2250,32 @@ class BasePlatformAdapter(ABC):
         except Exception as e:  # pragma: no cover - defensive
             logger.warning("[%s] Could not load plugin handler factories: %s", self.name, e)
             return
+        if self._plugin_handler_native is not native or self._plugin_handlers_wired is None:
+            # A rebuilt native client (transient-init rebuild, reconnect) starts with nothing wired.
+            self._plugin_handler_native = native
+            self._plugin_handlers_wired = set()
         for factory, plugin_name in factories:
+            key = (plugin_name, getattr(factory, "__qualname__", None) or repr(factory))
+            if key in self._plugin_handlers_wired:
+                continue
             try:
                 factory(native, self)
                 logger.info("[%s] Wired native handlers from plugin '%s'", self.name, plugin_name)
             except Exception as exc:
                 logger.error("[%s] Plugin '%s' handler factory raised: %s", self.name, plugin_name,
                              exc, exc_info=True)
+            # A raising factory is recorded too: re-wire must not re-raise it on every plugin load.
+            self._plugin_handlers_wired.add(key)
+
+    def rewire_plugin_handlers(self) -> None:
+        """Register handlers of plugins loaded AFTER ``connect()`` wired the first batch (#87770);
+        the gateway runner calls this on every plugin-loaded event. Safe to call repeatedly: only
+        factories not yet wired on the live native client run. Before ``connect()`` has wired once
+        there is nothing to re-wire — connect will pick everything up. Adapters with extra plugin
+        registries (Slack action handlers) extend this."""
+        if self._plugin_handlers_wired is None:
+            return
+        self._wire_plugin_handlers(self._plugin_handler_native)
 
     @property
     def name(self) -> str:

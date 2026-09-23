@@ -130,7 +130,9 @@ export const en: Translations = {
       managedUnavailable: 'Managed apps are not available for this account yet.',
       writeFailed: 'That change was not saved.',
       refreshFailed: 'The tool list was not refreshed.',
-      disconnectNoAccount: 'Hermes has no account to disconnect here. Refresh the page and try again.'
+      disconnectNoAccount: 'Hermes has no account to disconnect here. Refresh the page and try again.',
+      disconnectRefused:
+        'Nous could not remove this sign-in right now. Turn the app off with the switch instead, or try again later.'
     },
 
     add: {
@@ -176,7 +178,8 @@ export const en: Translations = {
       removeServerTitle: (name: string) => `Remove ${name}?`,
       removeServerBody: 'The entry leaves mcp.json on this computer. Nothing else is deleted.',
       appSwitch: (name: string) => `Hermes can use ${name}`,
-      waysTitle: (name: string) => `How Hermes reaches ${name}`,
+      waysTitle: (name: string) => `Where ${name} runs`,
+      wayNotConnected: (name: string) => `Not connected yet. Sign in to ${name} in your browser.`,
       wayHosted: 'Managed',
       bothOn: (name: string) => `Both are on, so Hermes sees every ${name} tool twice.`,
       turnOffLocal: 'Turn off the local server',
@@ -663,6 +666,7 @@ export const en: Translations = {
       'view.toggleStatusbar': 'Toggle status bar',
       'view.toggleTabStrip': 'Toggle tabs',
       'view.toggleProfileRail': 'Toggle profile rail',
+      'view.toggleSimpleMode': 'Toggle Simple mode',
       'view.showFiles': 'Show file browser',
       'view.showBrowser': 'Open browser',
       'view.toggleHud': 'Toggle HUD mode',
@@ -844,8 +848,10 @@ export const en: Translations = {
         reviewedHeading: 'Reviewed catalog entry',
         reviewedIntro:
           'This entry was human-reviewed at its pinned commit. You can still inspect the exact code below.',
-        restartToApply: 'Restart the gateway for the plugin to take effect.',
-        restartNow: 'Restart gateway',
+        toolsConnected: n => (n === 1 ? '1 tool connected' : `${n} tools connected`),
+        skillsReady: names => (names.length === 1 ? `skill ${names[0]} ready` : `${names.length} skills ready`),
+        nextChat: 'more tools available in your next chat',
+        serverNotConnected: (server, reason) => `MCP server ${server} is not connected${reason ? `: ${reason}` : '.'}`,
         missingEnvAction: 'Set it up',
         alreadyInstalled: (name: string) => `${name} is already installed.`,
         desktopTarget: "Installs into this app's local desktop-plugins folder",
@@ -1825,7 +1831,7 @@ export const en: Translations = {
       loading: 'Loading archived sessions…',
       archivedTitle: 'Archived sessions',
       archivedIntro:
-        'Archived chats are hidden from the sidebar but keep all their messages. Ctrl/⌘-click a chat in the sidebar to archive it.',
+        'Archived chats are hidden from the sidebar but keep all their messages. Alt/⌥+Shift-click a chat in the sidebar to archive it.',
       emptyArchivedTitle: 'Nothing archived',
       emptyArchivedDesc: 'Archive a chat to hide it here.',
       unarchive: 'Unarchive',
@@ -2032,7 +2038,7 @@ export const en: Translations = {
       agentTitle: 'Agent plugins',
       agentBlurb:
         'Extend the agent for the selected profile — tools, hooks, providers. Take effect after a gateway restart.',
-      pageBlurb: 'One row per plugin. A plugin can extend this app, the agent, or both — each half has its own switch.',
+      pageBlurb: 'A plugin can extend this app, the agent, or both — each half has its own switch.',
       halfDesktop: 'Desktop',
       halfDesktopHint: 'this app, same for every profile',
       halfAgent: 'Agent',
@@ -3082,6 +3088,13 @@ export const en: Translations = {
     projectEmpty: 'No sessions yet',
     projectLoadFailed: 'Could not load sessions',
     noSessions: 'No sessions yet',
+    storageCorrupt: {
+      title: 'Session database is damaged',
+      body: (profiles: string) =>
+        `Hermes can't read all of the session history for ${profiles}. Chats missing from this list were not deleted; the file they are stored in is damaged.`,
+      action: 'Quit Hermes on this profile, then inspect the file without changing it, or restore a snapshot:',
+      guide: 'Recovery guide'
+    },
     noFilterMatches: 'No sessions match these filters',
     projects: {
       showAllSessions: 'Show all sessions',
@@ -3291,12 +3304,77 @@ export const en: Translations = {
     hotkeys: 'Hotkeys',
     helpFooter: 'opens the full panel · backspace dismisses',
     commandDescs: {
-      '/help': 'full list of commands + hotkeys',
+      '/help': 'Show desktop slash commands',
       '/clear': 'start a new session',
-      '/resume': 'resume a prior session',
+      '/resume': 'Resume a saved session',
       '/details': 'control transcript detail level',
       '/copy': 'copy selection or last assistant message',
-      '/quit': 'exit hermes'
+      '/quit': 'exit hermes',
+      '/start': 'Acknowledge platform start pings without a reply',
+      '/new': 'Start a new desktop chat',
+      '/topic': 'Enable or inspect Telegram DM topic sessions',
+      '/save': 'Save the current transcript to JSON',
+      '/retry': 'Retry the last message (resend to agent)',
+      '/prompt': 'Compose your next prompt in $EDITOR (markdown), then send it',
+      '/undo': 'Back up N user turns and re-prompt (default 1)',
+      '/title': 'Rename the current session',
+      '/handoff': 'Hand off this session to a messaging platform',
+      '/branch': 'Branch the latest message into a new chat',
+      '/worktree': 'Show, list, create, or prune isolated git worktrees',
+      '/compress': 'Compress this conversation context',
+      '/rollback': 'List or restore filesystem checkpoints (restores keep your hand-edits; --all overrides)',
+      '/export': 'Export a profile (config, skills, theme) to a shareable archive',
+      '/import': 'Import a shared profile archive as a new profile',
+      '/stop': 'Stop the active turn and background processes',
+      '/pause': 'Pause new work globally (emergency stop); \'/pause off\' resumes',
+      '/bg': 'Run a prompt in a separate background session',
+      '/btw': 'Ask a side question about this conversation without interrupting it',
+      '/agents': 'Show active agents and running tasks',
+      '/journey': 'Open the memory graph — skills + memories over time',
+      '/queue': 'Queue a prompt for the next turn, or list/edit/rm/move/clear queued prompts',
+      '/steer': 'Inject a message after the next tool call without interrupting',
+      '/goal': 'Set a standing goal Hermes works on across turns until achieved',
+      '/heartbeat': 'Set a recurring prompt that re-enters this session when idle',
+      '/refine': 'Review this conversation now and save lessons to memory/skills',
+      '/review': 'Spawn an independent subagent to review the work just discussed (PR, code, docs)',
+      '/loop': 'Re-run a prompt on a recurring interval in this session',
+      '/plan': 'Write a markdown implementation plan to .hermes/plans/ without executing anything',
+      '/moa': 'Run one prompt through the default Mixture of Agents preset, then restore your model',
+      '/subgoal': 'Add or manage extra criteria on the active goal',
+      '/status': 'Show current session status',
+      '/egress': 'Show Docker egress proxy status',
+      '/context': 'Show detailed context window view with usage gauge, category breakdown, compression stats, and throughput',
+      '/whoami': 'Show your slash command access (admin / user)',
+      '/profile': 'Switch the active Hermes profile',
+      '/codex-runtime': 'Toggle codex app-server runtime for OpenAI/Codex models',
+      '/personality': 'Set a predefined personality',
+      '/battery': 'Toggle a color-coded battery indicator in the status bar',
+      '/timestamps': 'Toggle [HH:MM] timestamps on messages and /history',
+      '/diff': 'Show git changes in the working directory',
+      '/focus': 'Toggle focus view — show only your prompt and the final response',
+      '/yolo': 'Toggle YOLO — auto-approve dangerous commands',
+      '/approvals': 'Show or set the persistent dangerous-command approval mode',
+      '/reasoning': 'Reasoning effort or display [<level> [--global]|show|hide|full|clamp]',
+      '/skin': 'Switch desktop theme or cycle to the next one',
+      '/wake': 'Control the desktop wake-word listener [on|off|status]',
+      '/tools': 'Manage tools: /tools [list|disable|enable] [name...]',
+      '/memory': 'Review pending memory writes / toggle the approval gate',
+      '/bundles': 'List skill bundles (aliases /<name> for multiple skills)',
+      '/pet': 'Toggle or adopt a petdex mascot (/pet, /pet list, /pet boba)',
+      '/hatch': 'Generate a new pet (opens the pet generator)',
+      '/learn': 'Learn a reusable skill from anything you describe (dirs, URLs, this chat, notes)',
+      '/init': 'Generate or update AGENTS.md project instructions from a repo scan',
+      '/suggestions': 'Review suggested automations (accept/dismiss)',
+      '/blueprint': 'Set up an automation from a blueprint template',
+      '/browser': 'Manage browser CDP connection [connect|disconnect|status] (local gateway only)',
+      '/palette': 'Open the fuzzy command palette (also Ctrl+P)',
+      '/usage': 'Show token usage and rate limits; `reset` redeems a banked Codex limit reset',
+      '/subscription': 'View your Nous plan and change it in the browser',
+      '/topup': 'Show your Nous balance and manage billing on the portal',
+      '/platform': 'Pause, resume, or list a failing gateway platform',
+      '/version': 'Show Hermes Agent version',
+      '/debug': 'Upload debug report (system info + logs) and get shareable links',
+      '/model': 'Switch the model for this session'
     },
     hotkeyDescs: {
       'composer.mention': 'reference files, folders, urls, git',
@@ -3641,6 +3719,13 @@ export const en: Translations = {
     everythingSkipped: 'Skipped',
     everythingRowFailed: 'Update failed',
     everythingFanoutFailedTitle: 'Couldn’t update other instances',
+    changeLogNew: "What's new",
+    changeLogFixed: 'Fixed',
+    changeLogFaster: 'Faster',
+    changeLogImproved: 'Improved',
+    changeLogOther: 'Other improvements',
+    changeLogFallbackLabel: 'In this update',
+    changeLogFallbackItem: 'Improvements and fixes',
     applyStatus: {
       preparing: 'Updating backend…',
       pulling: 'Backend updating…',
@@ -4227,6 +4312,20 @@ export const en: Translations = {
     }
   },
 
+  interfaceMode: {
+    title: 'Interface mode',
+    hint: 'Changes what is shown, not what Hermes can do.',
+    sessionNote: 'Set by Simple mode. A change here lasts for this session; switch to Advanced to make it yours.',
+    simple: {
+      label: 'Simple',
+      description: 'For talking to Hermes. Sidebar and chat; no terminal, file or diff panes.'
+    },
+    advanced: {
+      label: 'Advanced',
+      description: 'For developers. Terminal, files, diffs, statusbar and layouts, as you set them.'
+    }
+  },
+
   zones: {
     showTabStrip: 'Show tabs',
     hideTabStrip: 'Hide tabs',
@@ -4573,6 +4672,29 @@ export const en: Translations = {
       lateAnswerTip: 'Draft this answer as a follow-up message',
       lateAnswerHint: 'This prompt is no longer waiting. Pick an option to draft it as a follow-up message.'
     },
+    catalogInstall: {
+      preparing: 'Preparing the install…',
+      install: 'Install',
+      advanced: 'Advanced',
+      skip: 'Skip',
+      installing: 'Installing…',
+      installed: 'Installed',
+      notInstalled: 'Not installed',
+      failed: 'Failed',
+      showNames: 'show names',
+      hideNames: 'hide names',
+      skill: name => `skill ${name}`,
+      kind: { plugin: 'plugin', skill: 'skill' },
+      tier: { official: 'official', community: 'community' },
+      targetProfile: profile => `Installs into your ${profile} profile`,
+      sendFailed: 'Could not send your answer. Try again.',
+      commitLabel: 'Commit',
+      subdirLabel: 'Folder',
+      securityHeading: 'Security',
+      scan: { passed: 'Scan passed', warnings: 'Scan found warnings', failed: 'Scan failed' },
+      requirementsLabel: 'Requires',
+      credentialsHeading: 'Credentials'
+    },
     mcpSetup: {
       installTitle: 'Add MCP servers',
       enableTitle: 'Enable MCP servers',
@@ -4703,6 +4825,8 @@ export const en: Translations = {
       'Review the command before entering your sudo password. Your password is sent to the agent running it and cached for this session.',
     sudoCommandUnavailable:
       'This agent did not provide the command. Cancel if you cannot verify it in the conversation.',
+    sudoInstallDesc:
+      'Hermes needs your sudo password to install the Bot Screen packages (TigerVNC + Xfce) on the gateway host. It is sent only to that host.',
     sudoPlaceholder: 'sudo password',
     secretTitle: 'Secret required',
     secretDesc: 'Hermes needs a credential to continue.',
