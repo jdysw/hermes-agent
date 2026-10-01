@@ -89,6 +89,50 @@ def _validated_runtime_venv(env: dict) -> Path | None:
         return None
 
 
+_INSTALL_RUNTIME_SITE_PACKAGES: list[Path] | None = None
+
+
+def _get_install_runtime_site_packages() -> list[Path]:
+    """site-packages of EVERY runtime venv owned by this repo's PM install.
+
+    PM rebuilds a runtime venv when its lock changes and updates its facts file to
+    point at the new one, but a long-lived process that started BEFORE the switch
+    (the gateway) still carries the OLD venv's path in ``os.environ["PYTHONPATH"]``
+    and hands it to every child it spawns. ``_validated_runtime_venv`` knows only
+    the CURRENT venv, so the stale path survived the strip -- and a child on a
+    different interpreter version then crashed importing the other version's C
+    extensions.
+
+    Ownership is still decided by pure provenance: every path returned lives under
+    this install's ``environments/<id>/venv`` directory. It is NOT a cross-version
+    heuristic -- a ``pythonX.Y/site-packages`` entry outside this install is still
+    preserved byte-for-byte.
+    """
+    global _INSTALL_RUNTIME_SITE_PACKAGES
+    if _INSTALL_RUNTIME_SITE_PACKAGES is None:
+        found: list[Path] = []
+        try:
+            from pm.environments import runtime_facts_path
+
+            facts = runtime_facts_path(Path(__file__).resolve().parents[2])
+            # is_file() is both the provenance proof and the isolation guard: under a
+            # test/temporary HERMES_HOME the facts file does not exist, so the real
+            # home's installs tree is never touched.
+            if facts.is_file():
+                for venv in (facts.parent / "environments").glob("*/venv"):
+                    for lib in venv.glob("lib/python*"):
+                        candidate = lib / "site-packages"
+                        if candidate.is_dir():
+                            found.append(candidate)
+                    windows_layout = venv / "Lib" / "site-packages"
+                    if windows_layout.is_dir():
+                        found.append(windows_layout)
+        except Exception:
+            pass
+        _INSTALL_RUNTIME_SITE_PACKAGES = found
+    return list(_INSTALL_RUNTIME_SITE_PACKAGES)
+
+
 def _get_hermes_site_packages(env: dict) -> list[Path]:
     """Exact site-packages dirs owned by the Hermes runtime (cached):
     ``site.getsitepackages()`` with a ``sys.prefix`` fallback, plus a validated
@@ -115,6 +159,15 @@ def _get_hermes_site_packages(env: dict) -> list[Path]:
         runtime_site_packages = site_packages(runtime_venv)
         if not any(_same_path(runtime_site_packages, existing) for existing in result):
             result.append(runtime_site_packages)
+
+    # Every OTHER runtime venv of this install, not just the current one: PM swaps
+    # the venv and a process that started before the swap keeps the old path in
+    # os.environ["PYTHONPATH"] forever (the gateway is long-lived), handing it to
+    # children on a different interpreter version. Provenance is still the only
+    # test -- these paths sit under this install's environments/ directory.
+    for stale in _get_install_runtime_site_packages():
+        if not any(_same_path(stale, existing) for existing in result):
+            result.append(stale)
     return result
 
 
