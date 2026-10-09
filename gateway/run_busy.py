@@ -14,7 +14,7 @@ import contextlib
 import json
 import os
 import time
-from agent.i18n import t
+from agent.i18n import DEFAULT_LANGUAGE, t
 from agent.session_activity import format_iteration_progress
 from gateway.config import Platform
 from gateway.platforms.base import EphemeralReply
@@ -24,8 +24,25 @@ from gateway.whatsapp_identity import canonical_whatsapp_identifier
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 if TYPE_CHECKING:  # string annotations only; never imported at runtime (cycle)
-    from gateway.run import GatewayRunner  # noqa: F401
-    from gateway.run_turn_runner import TurnRunner  # noqa: F401
+    from gateway.run import GatewayRunner
+    from gateway.run_turn_runner import TurnRunner
+
+
+def approval_input_words(input_key: str) -> tuple[str, ...]:
+    """Typed-reply synonyms for ``approval.inputs.<input_key>`` (comma-lists): the English words
+    ALWAYS match, plus the active language's list, so a Polish pack can add "tak" without losing
+    "yes". Lower-cased, de-duplicated, order preserved (English first)."""
+    seen: dict[str, None] = {}
+    key = f"approval.inputs.{input_key}"
+    for raw in (t(key, lang=DEFAULT_LANGUAGE), t(key)):
+        if raw == key:  # catalog miss: t() echoes the key
+            continue
+        for word in raw.split(","):
+            word = word.strip().lower()
+            if word:
+                seen.setdefault(word, None)
+    return tuple(seen)
+
 
 # Log-record parity with the origin module.
 logger = logging.getLogger("gateway.run")
@@ -52,7 +69,7 @@ def _tail_has_slot(tail: str, slot: str) -> bool:
 
 def _same_chat_key_slots(
     key: str, *, prefix: str, chat_id: str, scope_id: Optional[str],
-) -> Optional[Tuple[str, str]]:
+) -> Optional[tuple[str, str]]:
     """``(chat_type, tail)`` when ``key`` names the SAME chat as ``prefix`` + ``chat_id``, else None.
 
     ``prefix`` is the key's fixed-shape head, ``agent:<profile>:<platform>:``. Everything after it is
@@ -342,10 +359,10 @@ class GatewayBusySessionMixin:
     @staticmethod
     def _lookup_session_id_under_store_lock(session_store, session_key: str):
         """Sync helper run in the thread pool: read session_id under the store lock."""
-        # noqa: SLF001 — intentional private access; runs off the event loop.
-        with session_store._lock:  # noqa: SLF001
-            session_store._ensure_loaded_locked()  # noqa: SLF001
-            entry = session_store._entries.get(session_key)  # noqa: SLF001
+
+        with session_store._lock:
+            session_store._ensure_loaded_locked()
+            entry = session_store._entries.get(session_key)
         return getattr(entry, "session_id", None) if entry is not None else None
 
     # Metadata that must match for two pending events to merge into one slot.
@@ -491,18 +508,25 @@ class GatewayBusySessionMixin:
             return
         if self._queue_during_drain_enabled(effective_mode):
             self._queue_or_replace_pending_event(session_key, event)
-            message = f"⏳ 网关正在{self._status_action_gerund()} —— 已排队，待其恢复后将在下一回合处理。"
+            message = t("gateway.busy.drain_queued", action=self._status_action_gerund())
         else:
-            message = f"⏳ 网关正在{self._status_action_gerund()}，当前无法接受新的回合。"
+            message = t("gateway.busy.drain_rejected", action=self._status_action_gerund())
         await self._send_busy_reply(event, adapter, message)
 
-    # Bare-word approval replies → (verb, args) for the synthesized slash command.
-    _PLAINTEXT_APPROVAL_WORDS: Dict[str, tuple] = {
-        **{w: ("approve", "") for w in ("approve", "yes", "ok", "okay", "confirm", "y", "👍")},
-        **{w: ("deny", "") for w in ("deny", "no", "reject", "cancel", "n", "👎")},
-        **{w: ("approve", "always") for w in ("always", "approve always", "always approve")},
-        **{w: ("approve", "session") for w in ("session", "approve session", "session approve")},
-    }
+    # Bare-word approval replies → (verb, args) for the synthesized slash command. English words
+    # (and the thumbs) always match; ``approval.inputs.*`` adds the active language's synonyms.
+    _PLAINTEXT_APPROVAL_EXTRA_WORDS: dict[str, tuple] = {"👍": ("approve", ""), "👎": ("deny", "")}
+    _PLAINTEXT_APPROVAL_INPUT_KEYS: tuple[tuple[str, tuple], ...] = (
+        ("approve", ("approve", "")), ("deny", ("deny", "")),
+        ("always", ("approve", "always")), ("session", ("approve", "session")))
+
+    def _plaintext_approval_words(self) -> dict[str, tuple]:
+        """Word → (verb, args) for the active language: the English list ∪ ``t("approval.inputs.<k>")``."""
+        words: dict[str, tuple] = dict(self._PLAINTEXT_APPROVAL_EXTRA_WORDS)
+        for input_key, verb_args in self._PLAINTEXT_APPROVAL_INPUT_KEYS:
+            for word in approval_input_words(input_key):
+                words.setdefault(word, verb_args)
+        return words
 
     async def _route_plaintext_approval_while_busy(self, event: MessageEvent, session_key: str) -> bool:
         """Route a bare "yes"/"no" to the approval handlers while a dangerous-command approval blocks.
@@ -528,7 +552,7 @@ class GatewayBusySessionMixin:
             # the draining-case send above).
             if event.allow_gateway_control and has_blocking_approval(session_key):
                 _raw_text = (event.text or "").strip().lower()
-                _match = self._PLAINTEXT_APPROVAL_WORDS.get(_raw_text)
+                _match = self._plaintext_approval_words().get(_raw_text)
                 if _match is not None:
                     _verb, _normalized_args = _match
                     _approval_handler = (
@@ -593,7 +617,9 @@ class GatewayBusySessionMixin:
                 steered = self._try_agent_verb(
                     running_agent, "steer", steer_text, session_key, event=event
                 )
-            if not steered:
+            if steered:
+                self._fold_into_running_turn(running_agent, session_key, event)
+            else:
                 effective_mode = "queue"
         elif (
             effective_mode == "interrupt" and plain_text and agent_live
@@ -636,8 +662,8 @@ class GatewayBusySessionMixin:
         """
         if not self._try_agent_verb(running_agent, "redirect", text, session_key, event=event):
             return False
-        turn = self._session_state(session_key).turn
-        if turn.agent is not running_agent:
+        turn = self._fold_into_running_turn(running_agent, session_key, event)
+        if turn is None:
             return True  # a newer turn already owns the slot; never re-anchor it
         anchor = self._reply_anchor_for_event(event)
         inbound_id = str(event.message_id) if event.message_id else None
@@ -648,6 +674,19 @@ class GatewayBusySessionMixin:
             turn.ctx.event_message_id = anchor
             turn.ctx.inbound_message_id = inbound_id
         return True
+
+    def _fold_into_running_turn(self, running_agent, session_key: str, event: MessageEvent):
+        """The running turn now answers *event* too (steer, redirect): if *event* was addressed to
+        the bot, a bare silence marker must not end the turn. Returns the turn, or None when a newer
+        turn already owns the slot."""
+        turn = self._session_state(session_key).turn
+        if turn.agent is not running_agent:
+            return None
+        if turn.event is not None and turn.event is not event:
+            turn.event.absorb_reply_expected(event)
+            if turn.ctx is not None:
+                turn.ctx.reply_expected = turn.event.reply_expected
+        return turn
 
     async def _interrupt_running_agent_for_busy_event(self, event: MessageEvent, adapter, running_agent) -> None:
         """Interrupt mode: abort in-flight tool calls; the agent loop exits at its next check point."""
@@ -683,9 +722,9 @@ class GatewayBusySessionMixin:
             logger.debug("Busy steer ack suppressed for session %s", session_key)
         return steer_ack_enabled
 
-    _BUSY_DEMOTED_TAIL = (
-        " —— 你的消息已排队，待其结束后处理（可用 /stop 全部取消）。"
-    )
+    @property
+    def _BUSY_DEMOTED_TAIL(self) -> str:
+        return t("gateway.busy.demoted_tail")
 
     def _compose_busy_ack_message(
         self, event: MessageEvent, now: float, _busy_state, running_agent: Any, *,
@@ -712,7 +751,7 @@ class GatewayBusySessionMixin:
                 if _busy_state and _busy_state.turn.started_ts:
                     elapsed_min = int((now - _busy_state.turn.started_ts) / 60)
                 if elapsed_min > 0:
-                    status_parts.append(f"已运行 {elapsed_min} 分钟")
+                    status_parts.append(t("gateway.busy.elapsed_min", minutes=elapsed_min))
                 if summary.get("max_iterations", 0):
                     status_parts.append(
                         format_iteration_progress(
@@ -720,27 +759,28 @@ class GatewayBusySessionMixin:
                         )
                     )
                 if summary.get("current_tool"):
-                    status_parts.append(f"正在执行: {summary.get('current_tool')}")
+                    status_parts.append(t("gateway.busy.running_tool", tool=summary.get("current_tool")))
             except Exception:
                 pass
-        status_detail = f" ({', '.join(status_parts)})" if status_parts else ""
+        status_detail = (t("gateway.busy.ack_detail_wrap", detail=t("gateway.busy.ack_detail_joiner").join(status_parts))
+                         if status_parts else "")
         if is_steer_mode and self._agent_has_active_subagents(running_agent):
-            head = "⏩ 已注入当前任务及其活跃子代理"
-            tail = "。你的消息将在它们下一次工具调用后生效。"
+            head = t("gateway.busy.steered_subagents_head")
+            tail = t("gateway.busy.steered_subagents_tail")
         elif is_steer_mode:
-            head, tail = "⏩ 已注入当前任务", "。你的消息将在下一次工具调用后生效。"
+            head, tail = t("gateway.busy.steered_head"), t("gateway.busy.steered_tail")
         elif is_redirect_mode:
-            head, tail = "↪ 已重定向当前任务", "。我会按你的更正进行调整。"
+            head, tail = t("gateway.busy.redirected_head"), t("gateway.busy.redirected_tail")
         elif is_queue_mode and demoted_for_subagents:
             # Explain the demotion: the follow-up didn't kill the subagent; /stop is the escape hatch.
-            head, tail = "⏳ 子代理正在工作", self._BUSY_DEMOTED_TAIL
+            head, tail = t("gateway.busy.subagent_working_head"), self._BUSY_DEMOTED_TAIL
         elif is_queue_mode and demoted_for_compression:
-            head, tail = "⏳ 正在压缩上下文", self._BUSY_DEMOTED_TAIL
+            head, tail = t("gateway.busy.compressing_head"), self._BUSY_DEMOTED_TAIL
         elif is_queue_mode:
-            head, tail = "⏳ 已排队，等待下一轮", "。当前任务结束后我会立即回复。"
+            head, tail = t("gateway.busy.queued_head"), t("gateway.busy.queued_tail")
         else:
-            head, tail = "⚡ 正在中断当前任务", "。我会尽快回复你的消息。"
-        message = f"{head}{status_detail}{tail}"
+            head, tail = t("gateway.busy.interrupting_head"), t("gateway.busy.interrupting_tail")
+        message = t("gateway.busy.ack", head=head, detail=status_detail, tail=tail)
 
         # One-time onboarding hint about the queue/interrupt knob (flag persisted to config.yaml).
         try:
@@ -881,7 +921,7 @@ class GatewayBusySessionMixin:
         "loop", "refine", "review", "voice",
     )
 
-    def _command_handler_table(self, names) -> Dict[str, Any]:
+    def _command_handler_table(self, names) -> dict[str, Any]:
         return {
             name: getattr(
                 self, self._COMMAND_HANDLER_ALIASES.get(name, f"_handle_{name.replace('-', '_')}_command"),
@@ -909,7 +949,7 @@ class GatewayBusySessionMixin:
         return self._command_handler_table(self._IDLE_COMMANDS)
 
     # busy_handler key (hermes_cli/commands.py CommandDef) → mid-run variant ``_busy_<key>_command``.
-    _BUSY_SPECIAL_HANDLERS: Dict[str, str] = {
+    _BUSY_SPECIAL_HANDLERS: dict[str, str] = {
         k: f"_busy_{k}_command" for k in ("start", "stop", "new", "queue", "steer", "egress", "goal", "loop")
     }
 
@@ -934,9 +974,9 @@ class GatewayBusySessionMixin:
             special = self._BUSY_SPECIAL_HANDLERS.get(handler_key)
             if special is not None:
                 return await getattr(self, special)(event, quick_key, source)
-            reject_text = self._BUSY_REJECT_TEXT.get(handler_key)
-            if reject_text is not None:
-                return reject_text
+            reject_key = self._BUSY_REJECT_TEXT.get(handler_key)
+            if reject_key is not None:
+                return t(reject_key)
         if policy in ("dispatch", "interrupt_then_dispatch"):
             plain = self._gateway_plain_command_handlers().get(name)
             if plain is not None:
@@ -947,10 +987,7 @@ class GatewayBusySessionMixin:
                 "falling back to busy-reject", policy, name,
             )
 
-        return (
-            f"⏳ 代理正在运行 —— `/{name}` 无法在"
-            f"回合中途运行。请等待当前响应结束，或先执行 `/stop`。"
-        )
+        return t("gateway.busy.slash_rejected", command=name)
 
     async def _handle_pause_command(self, event: MessageEvent):
         """`/pause [reason]` engages the global emergency stop; `/pause off` lifts it (the estop gate
@@ -959,18 +996,15 @@ class GatewayBusySessionMixin:
         args = (event.get_command_args() or "").strip()
         if args.lower() in {"off", "resume", "stop", "disengage"}:
             if estop.disengage():
-                return "▶️ 已恢复 —— 可再次接受新任务。"
-            return "Hermes 并未处于暂停状态。"
+                return t("gateway.pause.resumed")
+            return t("gateway.pause.not_paused")
         state = estop.get_state()
         if state is not None and not args:
-            suffix = f" (reason: {state.get('reason')})" if state.get("reason") else ""
-            return f"⏸️ Hermes 已处于暂停状态{suffix}。使用 `/pause off` 恢复。"
+            suffix = t("gateway.pause.reason_suffix", reason=state.get("reason")) if state.get("reason") else ""
+            return t("gateway.pause.already_paused", suffix=suffix)
         estop.engage(reason=args or None)
-        suffix = f" (reason: {args})" if args else ""
-        return (
-            f"⏸️ 已暂停{suffix}。新的 cron/看板/网关任务暂缓；"
-            "进行中的任务将正常完成。使用 `/pause off` 恢复。"
-        )
+        suffix = t("gateway.pause.reason_suffix", reason=args) if args else ""
+        return t("gateway.pause.paused", suffix=suffix)
 
     async def _busy_start_command(self, event: MessageEvent, quick_key: str, source):
         # Telegram's /start is a platform ping (bot launch/deep-link), not a user command.
@@ -1007,7 +1041,7 @@ class GatewayBusySessionMixin:
         # A /queue carrying media or reply context is valid with no prompt text (image caption).
         has_media = bool(getattr(event, "media_urls", None))
         if not queued_text and not has_media:
-            return "用法：/queue <prompt>"
+            return t("gateway.queue.usage")
         adapter = self._delivery_adapter_for(source)
         if adapter:
             self._enqueue_fifo(quick_key, MessageEvent(
@@ -1024,7 +1058,7 @@ class GatewayBusySessionMixin:
                 internal=event.internal, timestamp=event.timestamp,
             ), adapter)
         depth = self._queue_depth(quick_key, adapter=adapter)
-        return "已排队，将在下一回合处理。" + (f"（{depth} 条排队中）" if depth > 1 else "")
+        return t("gateway.queue.queued") + (t("gateway.queue.queued_depth", depth=depth) if depth > 1 else "")
 
     async def _busy_steer_command(self, event: MessageEvent, quick_key: str, source):
         # /steer lands BETWEEN tool-call iterations of the same run (appended to the last tool
@@ -1032,7 +1066,7 @@ class GatewayBusySessionMixin:
         from gateway.run import _AGENT_PENDING_SENTINEL
         steer_text = event.get_command_args().strip()
         if not steer_text:
-            return "用法: /steer <提示词>"
+            return t("gateway.steer.usage")
         _steer_state = self._peek_session_state(quick_key)
         running_agent = _steer_state.turn.agent if _steer_state else None
 
@@ -1048,19 +1082,21 @@ class GatewayBusySessionMixin:
             return reply
 
         if running_agent is _AGENT_PENDING_SENTINEL:
-            return _queue_fallback("代理仍在启动 —— /steer 已排队至下一回合。")
+            return _queue_fallback(t("gateway.steer.queued_starting"))
         if not running_agent or not hasattr(running_agent, "steer"):
-            return _queue_fallback("当前没有活跃代理 —— /steer 已排队至下一回合。")
+            return _queue_fallback(t("gateway.steer.queued_no_agent"))
         try:
             accepted = self._steer_running_agent(running_agent, self._steer_text_with_origin(steer_text, event))
         except Exception as exc:
             logger.warning("Steer failed for session %s: %s", quick_key, exc)
-            return f"⚠️ 转向失败: {exc}"
+            return t("gateway.steer.failed", error=exc)
         if not accepted:
-            return "转向被拒绝（内容为空）。"
+            return t("gateway.steer.rejected_empty")
+        self._fold_into_running_turn(running_agent, quick_key, event)
         preview = steer_text[:60] + ("..." if len(steer_text) > 60 else "")
-        target = "任务及其活跃子代理" if self._agent_has_active_subagents(running_agent) else "任务"
-        return f"⏩ 转向已排队 —— 注入当前{target}，将在下一次工具调用后生效: '{preview}'"
+        target = (t("gateway.steer.target_subagents") if self._agent_has_active_subagents(running_agent)
+                  else t("gateway.steer.target_run"))
+        return t("gateway.steer.queued", target=target, preview=preview)
 
     async def _busy_goal_command(self, event: MessageEvent, quick_key: str, source):
         # Control verbs are safe mid-run (state only); setting new goal text is rejected so we don't
@@ -1069,22 +1105,22 @@ class GatewayBusySessionMixin:
 
         if is_goal_control(event.get_command_args() or ""):
             return await self._handle_goal_command(event)
-        return "代理正在运行 —— 请使用 /goal status / pause / clear / wait 管理目标，或先 /stop 再设置新目标。"
+        return t("gateway.busy.reject_goal")
 
     async def _busy_loop_command(self, event: MessageEvent, quick_key: str, source):
         # Mirrors /goal: control verbs are safe mid-run; a new loop is rejected.
         _loop_arg = (event.get_command_args() or "").strip().lower()
         if not _loop_arg or _loop_arg in {"status", "pause", "resume", "stop", "clear", "cancel", "help", "--help", "-h"}:
             return await self._handle_loop_command(event)
-        return "代理正在运行 —— 请使用 /loop status / pause / stop 管理循环，或先 /stop 再设置新循环。"
+        return t("gateway.busy.reject_loop")
 
     def _check_slash_access(self, source: SessionSource, canonical_cmd: str) -> Optional[str]:
         """Denial message if ``source`` cannot run ``canonical_cmd``, else None (both dispatch paths
         use it so an in-flight agent can't bypass admin gating; no ``allow_admin_from`` → None)."""
-        from gateway.slash_access import policy_for_source as _policy_for_source
+        from gateway.slash_access import policy_for_runner_source
         if not canonical_cmd:
             return None
-        policy = _policy_for_source(self.config, source)
+        policy = policy_for_runner_source(self, source)
         if not policy.enabled or policy.can_run(source.user_id, canonical_cmd):
             return None
         logger.info(
@@ -1094,17 +1130,14 @@ class GatewayBusySessionMixin:
         allowed_preview = sorted(policy.user_allowed_commands)
         if allowed_preview:
             suffix = (
-                "你可以运行: " + "、".join(f"/{c}" for c in allowed_preview[:12])
-                + ("…" if len(allowed_preview) > 12 else "") + "。使用 /whoami 查看完整列表。"
+                t("gateway.unauthorized.admin_only_can_run") + ", ".join(f"/{c}" for c in allowed_preview[:12])
+                + ("…" if len(allowed_preview) > 12 else "") + t("gateway.unauthorized.admin_only_whoami_hint")
             )
         else:
-            suffix = (
-                "此平台上未对非管理员启用任何斜杠命令。请让管理员将你加入 "
-                "allow_admin_from，或为你设置 user_allowed_commands。"
-            )
-        return f"⛔ /{canonical_cmd} 仅限管理员使用。{suffix}"
+            suffix = t("gateway.unauthorized.admin_only_none")
+        return t("gateway.unauthorized.admin_only", command=canonical_cmd, suffix=suffix)
 
-    def _same_chat_runs(self, source: SessionSource, own_key: str) -> List[Tuple[str, str, str]]:
+    def _same_chat_runs(self, source: SessionSource, own_key: str) -> list[tuple[str, str, str]]:
         """``(key, chat_type, tail)`` for every OTHER running turn in the caller's chat (``tail`` is
         the key text after the chat id, ``""`` when the key ends there).
 
@@ -1133,8 +1166,8 @@ class GatewayBusySessionMixin:
         return runs
 
     def _sibling_thread_run_keys(
-        self, source: SessionSource, runs: List[Tuple[str, str, str]],
-    ) -> List[str]:
+        self, source: SessionSource, runs: list[tuple[str, str, str]],
+    ) -> list[str]:
         """Keys from ``runs`` belonging to OTHER participants in the caller's own thread (per-user
         thread mode keys are ``...:{thread_id}:{user_id}``, so another user's run is invisible to the
         caller's own ``/stop``). Callers still gate on authz."""
@@ -1149,8 +1182,8 @@ class GatewayBusySessionMixin:
         ]
 
     def _chat_scoped_run_keys(
-        self, source: SessionSource, runs: List[Tuple[str, str, str]],
-    ) -> List[str]:
+        self, source: SessionSource, runs: list[tuple[str, str, str]],
+    ) -> list[str]:
         """Keys from ``runs`` for ANY session of the same chat, whatever the chat_type/thread/
         participant slots. Two supported shapes make a /stop key miss a run in the same chat (found
         via Slack's native stop button, gateway-gateway#286): a top-level channel turn keys
@@ -1236,7 +1269,7 @@ class GatewayBusySessionMixin:
             )
         except Exception as e:
             logger.debug("suggestions command failed: %s", e)
-            return f"建议命令失败：{e}"
+            return t("gateway.suggestions.failed", error=e)
 
     async def _handle_blueprint_command(self, event: MessageEvent):
         """/blueprint via the shared handler (origin = event source so jobs deliver back here)."""
@@ -1250,7 +1283,7 @@ class GatewayBusySessionMixin:
         except Exception as e:
             logger.debug("blueprint command failed: %s", e)
             from hermes_cli.blueprint_cmd import BlueprintCommandResult
-            return BlueprintCommandResult(f"定时任务蓝图命令失败：{e}")
+            return BlueprintCommandResult(t("gateway.blueprint.failed", error=e))
 
     async def _maybe_confirm_destructive_slash(
         self, *, event: MessageEvent, command: str, title: str, detail: str, execute
@@ -1280,41 +1313,23 @@ class GatewayBusySessionMixin:
             )
 
         _p = self._typed_command_prefix_for(event.source.platform)
-        prompt_message = (
-            f"⚠️ **确认 /{command}**\n\n"
-            f"{detail}\n\n"
-            "请选择:\n"
-            "• **仅允许本次** —— 仅本次继续执行\n"
-            "• **始终允许** —— 继续执行并永久关闭该确认\n"
-            "• **取消** —— 保持当前对话不变\n\n"
-            f"_文字回退：回复 `{_p}approve`、`{_p}always` 或 `{_p}cancel`。_"
-        )
+        prompt_message = t("gateway.confirm.destructive_prompt", command=command, detail=detail, prefix=_p)
         return await self._request_slash_confirm(
             event=event, command=command, title=title, message=prompt_message, handler=_on_confirm
         )
 
-    _DESTRUCTIVE_OPTOUT_NOTE = {
-        True: (
-            "\n\nℹ️ 今后的 /clear、/new、/reset 和 /undo 将"
-            "不再询问即执行。可通过 "
-            "config.yaml 中的 `approvals.destructive_slash_confirm: true` 重新开启。"
-        ),
-        # The user did approve this run, so the action still goes ahead, but the preference did
-        # not stick and the prompt will be back next time. Say so rather than promising an
-        # opt-out that was never written.
-        False: (
-            "\n\n⚠️ 无法保存该偏好（config.yaml 不可"
-            "写），因此 /clear、/new、/reset 和 /undo 下次仍会"
-            "询问。要永久关闭该提示，请在 config.yaml 中设置 "
-            "`approvals.destructive_slash_confirm: false`。"
-        ),
-    }
+    @staticmethod
+    def _destructive_optout_note(persisted: bool) -> str:
+        """Note appended after an "always" confirm. ``persisted=False``: the user did approve this
+        run, so the action still goes ahead, but the preference did not stick and the prompt will be
+        back next time — say so rather than promising an opt-out that was never written."""
+        return t("gateway.confirm.destructive_optout" if persisted else "gateway.confirm.destructive_optout_save_failed")
 
     @staticmethod
     async def _run_confirmed_destructive_slash(choice: str, command: str, execute, session_key: str):
         """Confirm-callback body: ``cancel`` → message; ``always`` persists the opt-out, then runs."""
         if choice == "cancel":
-            return f"🟡 /{command} 已取消。对话保持不变。"
+            return t("gateway.confirm.cancelled", command=command)
         persisted = False
         if choice == "always":
             try:
@@ -1334,7 +1349,7 @@ class GatewayBusySessionMixin:
         result = await execute()
         # Only plain-string results get the note: it would mangle an EphemeralReply.
         if choice == "always" and isinstance(result, str):
-            return result + GatewayBusySessionMixin._DESTRUCTIVE_OPTOUT_NOTE[persisted]
+            return result + GatewayBusySessionMixin._destructive_optout_note(persisted)
         return result
 
     async def _request_slash_confirm(
@@ -1395,7 +1410,7 @@ class GatewayBusySessionMixin:
         # Text fallback — the prompt message itself is the direct reply.
         return message
 
-    def _read_user_config(self) -> Dict[str, Any]:
+    def _read_user_config(self) -> dict[str, Any]:
         """Raw config.yaml for gate lookups that must see on-disk changes without a restart."""
         try:
             from hermes_cli.config import load_config

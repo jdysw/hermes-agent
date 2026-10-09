@@ -422,8 +422,7 @@ def _cmd_purge(args) -> int:
     import shutil
     import time
     from hermes_cli.config import cfg_get, load_config
-    from tools import skill_ledger
-    from tools.skill_usage import _archive_dir
+    from tools import skill_ledger, skill_usage
     ttl_days = getattr(args, "days", None)
     if ttl_days is None:
         ttl_days = int(cfg_get(load_config(), "curator", "archive_ttl_days", default=0) or 0)
@@ -432,13 +431,26 @@ def _cmd_purge(args) -> int:
             "策展器：清理已禁用（curator.archive_ttl_days 为 0）。请设置该"
             "配置项，或传入 --days N 以清理超过 N 天的归档。")
         return 1
-    archive_root = _archive_dir()
+    archive_root = skill_usage._archive_dir()
     if not archive_root.exists():
         print("策展器：没有归档目录——无需清理。")
         return 0
     cutoff = time.time() - ttl_days * 86400
+    usage = skill_usage.load_usage()
+
+    def _archived_ts(p: Path) -> float:
+        # The NEWER of the record's archived_at and the dir mtime: archives made before
+        # archive_skill stamped the mtime carry the skill's last-edit mtime, and a stale
+        # archived_at survives a manual un-archive + re-archive. Never purge before either says so.
+        # Key by the SKILL.md frontmatter name: older archives were flattened under the directory
+        # name (`accelerate` for `huggingface-accelerate`), which is not the usage-record key.
+        rec = usage.get(skill_usage._read_skill_name(p / "SKILL.md", fallback=p.name)) or {}
+        archived = rec.get("state") == skill_usage.STATE_ARCHIVED
+        at = skill_usage._parse_iso_timestamp(rec.get("archived_at")) if archived else None
+        return max(at.timestamp(), p.stat().st_mtime) if at else p.stat().st_mtime
+
     candidates = sorted(
-        p for p in archive_root.iterdir() if p.is_dir() and p.stat().st_mtime < cutoff)
+        p for p in archive_root.iterdir() if p.is_dir() and _archived_ts(p) < cutoff)
     if not candidates:
         print(f"策展器：没有超过 {ttl_days} 天的归档技能。")
         return 0
@@ -576,10 +588,10 @@ def _cmd_usage(args) -> int:
         print("策展器：未找到任何技能")
         return 0
     provenance = [r.get("provenance", "agent") for r in rows]
-    counts = {k: provenance.count(k) for k in ("agent", "bundled", "hub")}
+    counts = {k: provenance.count(k) for k in ("agent", "bundled", "hub", "external")}
     print(
         f"技能：共 {len(rows)} 个  "
-        f"（agent={counts['agent']}  bundled={counts['bundled']}  hub={counts['hub']}）\n")
+        f"（agent={counts['agent']}  bundled={counts['bundled']}  hub={counts['hub']}  external={counts['external']}）\n")
     print(
         f"  {'技能':<38}  {'来源':<6}  "
         f"{'使用':>2}  {'查看':>2}  {'补丁':>3}  {'活动':>2}  最近活动")
@@ -610,9 +622,9 @@ _SUBCOMMANDS = (
         "usage", "显示所有技能（内置、技能中心、代理创建）的使用遥测及其来源",
         _cmd_usage,
         _arg("--sort", choices=("activity", "recent", "name"), default="activity",
-             help="排序方式：activity（使用最多在前，默认）、recent"
-                  "（最近活动在前）或 name（按字母序）"),
-        _arg("--provenance", choices=("agent", "bundled", "hub"), default=None,
+help="排序方式：activity（使用最多在前，默认）、recent"
+                 "（最近活动在前）或 name（按字母序）"),
+        _arg("--provenance", choices=("agent", "bundled", "hub", "external"), default=None,
              help="仅显示该来源的技能"),
         _arg("--json", **_STORE_TRUE, help="以 JSON 而非表格输出完整报告")),
     (
