@@ -162,6 +162,21 @@ class GatewayAgentCacheMixin:
             return
         override: dict[str, Any] = {k: persisted.get(k) for k in ("model", "provider", "base_url")}
         provider = persisted.get("provider")
+        # Local patch 2026-10-10: heal a bare "custom" that came from a direct-alias switch
+        # (model_aliases): the persisted override loses the alias identity, and credential
+        # re-resolution then falls through to the OpenRouter terminal fallback, which can pick
+        # up an unrelated key (e.g. OPENROUTER_API_KEY) for the alias's real endpoint.
+        # Mirrors the TUI heal path (tui_gateway/server.py). Remove once upstream heals this path.
+        if provider and str(provider).strip().lower() == "custom":
+            try:
+                from hermes_cli.runtime_provider import canonical_custom_identity
+                healed_identity = canonical_custom_identity(
+                    base_url=override.get("base_url"), model=override.get("model"))
+            except Exception:
+                healed_identity = None
+            if healed_identity:
+                provider = healed_identity
+                override["provider"] = healed_identity
         from hermes_cli.runtime_provider import is_foreign_provider_endpoint
         if is_foreign_provider_endpoint(provider, override.get("base_url")):
             override["base_url"] = None  # left over from a switch that kept the previous provider's URL
