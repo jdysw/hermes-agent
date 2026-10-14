@@ -35,7 +35,7 @@ def _size_mb(path) -> float:
 def _size_delta_label(saved_mb: float) -> str:
     """A negative delta means the file GREW (concurrent writes during a long optimize); "reclaimed
     -163.0 MB" reads as data loss, so say "grew by"."""
-    return f"已回收 {saved_mb:.1f} MB" if saved_mb >= 0 else f"增长 {-saved_mb:.1f} MB"
+    return f"reclaimed {saved_mb:.1f} MB" if saved_mb >= 0 else f"grew by {-saved_mb:.1f} MB"
 
 
 def _confirm_prompt(prompt: str) -> bool:
@@ -53,7 +53,7 @@ def _not_found(session_id) -> int:
 
 def _print_dry_run_preview(candidates, filters) -> None:
     from hermes_cli.session_filters import describe_filters
-    print(f"将导出 {len(candidates)} 个会话（{describe_filters(filters)}）。")
+    print(f"Would export {len(candidates)} session(s) ({describe_filters(filters)}).")
     for row in candidates[:100]:
         print(f"  {row.get('id')}  {row.get('source', '')}")
     if len(candidates) > 100:
@@ -155,24 +155,24 @@ def _cmd_recover(args):
     if not inspect_only and output is not None and report_path is None:
         report_path = output.with_name(output.name + ".recovery.json")
     usage_errors = (
-        (inspect_only and output is not None, "--output 不能与 --inspect-only 一起使用。"),
-        (inspect_only and allow_partial, "--allow-partial 不能与 --inspect-only 一起使用。"),
-        (not inspect_only and output is None, "除非使用 --inspect-only，否则必须提供 --output。"),
+        (inspect_only and output is not None, "--output cannot be used with --inspect-only."),
+        (inspect_only and allow_partial, "--allow-partial cannot be used with --inspect-only."),
+        (not inspect_only and output is None, "--output is required unless --inspect-only is used."),
         (
             report_path is not None and os.path.lexists(report_path.expanduser()),
-            f"拒绝覆盖已存在的报告：{report_path}",
+            f"refusing to overwrite existing report: {report_path}",
         ),
     )
     for bad, msg in usage_errors:
         if bad:
-            print(f"错误：{msg}")
+            print(f"Error: {msg}")
             return 2
     work_dir = getattr(args, "work_dir", None)
     try:
         if inspect_only:
             report = inspect_session_database(source, work_dir=work_dir)
         else:
-            print("正在将规范会话数据恢复到新数据库……")
+            print("Recovering canonical session data into a new database…")
             progress = _RecoveryProgress()
             report = recover_session_database(
                 source, output, work_dir=work_dir, chunk_size=getattr(args, "chunk_size", 1000),
@@ -180,15 +180,15 @@ def _cmd_recover(args):
             )
             progress.finish()
     except (SessionRecoveryError, OSError, sqlite3.DatabaseError) as exc:
-        print(f"错误：会话恢复失败：{exc}\n提供的源数据库未被替换或删除。")
+        print(f"Error: session recovery failed: {exc}\nThe supplied source database was not replaced or deleted.")
         return 1
     if report_path is None:
         print(json.dumps(report, indent=2, sort_keys=True))
     else:
         try:
-            print(f"恢复报告：{write_recovery_report(report_path, report)}")
+            print(f"Recovery report: {write_recovery_report(report_path, report)}")
         except (FileExistsError, OSError) as exc:
-            print(f"错误：无法写入恢复报告：{exc}")
+            print(f"Error: could not write recovery report: {exc}")
             return 1
     if inspect_only:
         return 0 if report.get("recoverable") else 1
@@ -218,32 +218,32 @@ class _RecoveryProgress:
 def _print_recovery_verdict(report, output, allow_partial) -> int:
     if report.get("complete"):
         print(
-            f"✓ 已恢复的数据库校验通过：{output}\n"
-            "  当前会话数据库未被改动。\n"
-            "  安装此数据库前，请先查看 JSON 报告。"
+            f"✓ Recovered database verified at: {output}\n"
+            "  The active session database was not changed.\n"
+            "  Review the JSON report before installing this database."
         )
         return 0
     if allow_partial and report.get("verified"):
         counts = report.get("verification", {}).get("table_counts", {})
         if report.get("best_effort"):
             print(
-                f"✓ 尽力而为的页级抢救已校验通过：{output}\n"
-                "  源表结构不可读；行已从原始页"
-                "通过 sqlite3 .recover 重建，并做了启发式映射。"
+                f"✓ BEST-EFFORT page-level salvage verified at: {output}\n"
+                "  The source table schemas were unreadable; rows were rebuilt from raw pages "
+                "via sqlite3 .recover and mapped heuristically."
             )
         else:
-            print(f"✓ 部分恢复输出校验通过：{output}")
+            print(f"✓ Partial recovery output verified at: {output}")
         sessions_n, messages_n = int(counts.get("sessions") or 0), int(counts.get("messages") or 0)
         print(
-            f"  已恢复 {sessions_n:,} 个会话和 {messages_n:,} 条消息。\n"
-            "  当前会话数据库未被改动。\n"
-            "  此输出并不完整。安装前请查看 JSON 报告中的"
-            "每一段跳过区间和孤儿计数。"
+            f"  Recovered {sessions_n:,} sessions and {messages_n:,} messages.\n"
+            "  The active session database was not changed.\n"
+            "  This output is incomplete. Review every skipped range and orphan count in the "
+            "JSON report before installing it."
         )
         return 0
     print(
-        "✗ 恢复输出未通过全部校验。\n"
-        "  不要安装它。请检查 JSON 报告，确认是否存在部分数据或错误。"
+        "✗ Recovery output did not pass every verification check.\n"
+        "  Do not install it. Review the JSON report for partial data or errors."
     )
     return 1
 
@@ -282,7 +282,7 @@ def _cmd_list(db, args):
             s for s, key in keyed if key and (_needle in key or _needle == os.path.basename(key.rstrip("/\\")))
         ]
     if not sessions:
-        print("未找到任何会话。")
+        print("No sessions found.")
         return
 
     # Workspace column only when some session carries a key (or when filtering): unbound listings read as before.
@@ -326,7 +326,7 @@ def _cmd_export(db, args):
         try:
             filters = build_prune_filters(args)
         except ValueError as e:
-            print(f"错误：{e}")
+            print(f"Error: {e}")
             return
         # A backup includes protected rows; prune's keep rules must not omit them.
         filters["archived"] = None
@@ -385,7 +385,7 @@ def _cmd_export(db, args):
                 return None
             return [s for s in (_one(row["id"]) for row in candidates) if s]
         if args.dry_run:
-            return print("--dry-run 至少需要一个筛选条件。")
+            return print("--dry-run requires at least one filter.")
         if _too_large():
             return None
         return [_redact(s) for s in db.export_all(source=None, **projection)]
@@ -403,8 +403,7 @@ def _render_only(args, sessions):
     from hermes_cli.session_export import export_record_count, render_sessions_export
     rendered = render_sessions_export(sessions, fmt="markdown" if args.format == "md" else "jsonl", only=args.only)
     count, noun = export_record_count(sessions, only=args.only)
-    unit = "条用户提示词" if noun == "prompt" else "个会话"
-    return rendered, f"已导出 {count} {unit} 到 {args.output}"
+    return rendered, f"Exported {count} {noun}{'' if count == 1 else 's'} to {args.output}"
 
 
 def _render_html(args, sessions):
@@ -412,21 +411,21 @@ def _render_html(args, sessions):
     from hermes_cli.session_export_html import generate_html_export, generate_multi_session_html_export
     single = len(sessions) == 1
     content = generate_html_export(sessions[0]) if single else generate_multi_session_html_export(sessions)
-    return content, f"已导出 {len(sessions)} 个会话到 {args.output}（HTML）"
+    return content, f"Exported {len(sessions)} {'session' if single else 'sessions'} to {args.output} (HTML)"
 
 
 def _render_jsonl(args, sessions):
     lines = "".join(json.dumps(s, ensure_ascii=False) + "\n" for s in sessions)
-    return lines, f"已导出 {len(sessions)} 个会话到 {args.output}"
+    return lines, f"Exported {len(sessions)} {'session' if args.session_id else 'sessions'} to {args.output}"
 
 
 #: kind -> (usage error when the --output/--format combination is unusable, renderer)
 _FLAT_EXPORTERS = {
     "only": (
-        lambda a: a.format not in ("jsonl", "md"), "--only user-prompts 仅支持 --format jsonl 或 md。", _render_only
+        lambda a: a.format not in ("jsonl", "md"), "--only user-prompts supports --format jsonl or md.", _render_only
     ),
-    "html": (lambda a: not a.output or a.output == "-", "HTML 导出需要指定输出文件路径。", _render_html),
-    "jsonl": (lambda a: not a.output, "JSONL 导出需要指定输出路径（用 - 表示标准输出）。", _render_jsonl),
+    "html": (lambda a: not a.output or a.output == "-", "HTML export requires an output file path.", _render_html),
+    "jsonl": (lambda a: not a.output, "JSONL export requires an output path (use - for stdout).", _render_jsonl),
 }
 
 
@@ -453,13 +452,13 @@ def _export_trace(db, args, filters):
         rows = db.list_sessions_rich(limit=1, order_by_last_active=True)
         session_id = rows[0].get("id") if rows else None
         if not session_id:
-            print("没有可导出的会话。请传入 --session-id。")
+            print("No session found to export. Pass --session-id.")
             return
     from agent.trace_upload import TraceRedactionError, build_trace_jsonl, upload_session_trace
     redact_trace = not getattr(args, "no_redact", False)
     if getattr(args, "upload", False):
         if not session_id:
-            print("--upload 每次导出一个会话：请传入 --session-id（或去掉筛选条件以使用最近的会话）。")
+            print("--upload exports one session: pass --session-id (or drop filters to use the most recent).")
             return
         resolved = db.resolve_session_id(session_id)
         db.close()
@@ -483,7 +482,7 @@ def _export_trace(db, args, filters):
         if len(ids) == 1:
             jsonl = _render_trace(ids[0])
             if not jsonl:
-                print(f"会话 '{ids[0]}'.")
+                print(f"No transcript to export for session '{ids[0]}'.")
                 return
             args.output = _output_file_in_dir(args.output, f"{ids[0]}.trace.jsonl")
             _write_output(args.output, jsonl, f"Exported 1 session trace to {args.output}")
@@ -496,16 +495,16 @@ def _export_trace(db, args, filters):
                 if jsonl:
                     (out_dir / f"{sid}.trace.jsonl").write_text(jsonl, encoding="utf-8")
                     exported += 1
-            print(f"已导出 {exported} 个会话追踪到 {out_dir}")
+            print(f"Exported {exported} session trace(s) to {out_dir}")
     except TraceRedactionError:
-        print("脱敏失败；拒绝导出未脱敏的追踪内容。")
+        print("Redaction failed; refusing to export unredacted trace content.")
 
 
 def _export_markdown(db, args, filters, redact):
     """Markdown / QMD export: one file per session plus a manifest entry."""
     from hermes_cli.session_export_md import append_manifest_entry, write_session_markdown
     if args.output == "-":
-        print("Markdown/QMD 导出会写入文件；标准输出（-）仅在 --format jsonl 时支持。")
+        print("Markdown/QMD export writes files; stdout (-) is only supported with --format jsonl.")
         return
     output_dir = _export_dir(args.output)
 
@@ -525,17 +524,17 @@ def _export_markdown(db, args, filters, redact):
         append_manifest_entry(output_dir, data, path, fmt=args.format)
         return data, path, snapshots
     if args.delete_after_verified and not args.yes:
-        print("--delete-after-verified 需要配合 --yes。")
+        print("--delete-after-verified requires --yes.")
         return
     if args.delete_after_verified and not args.session_id:
-        print("--delete-after-verified 仅在配合 --session-id 时支持。")
+        print("--delete-after-verified is only supported with --session-id.")
         return
     lineage_is_logical = getattr(args, "lineage", "single") == "logical"
     if args.session_id:
         return _export_markdown_single(db, args, _export_one, output_dir, lineage_is_logical)
     if not filters:
-        print("拒绝在没有筛选条件的情况下批量导出。请传入 --session-id 或 "
-              "至少一个筛选条件（例如 --older-than 90、--source telegram）。")
+        print("Refusing bulk export without a filter. Pass --session-id or "
+              "at least one filter (e.g. --older-than 90, --source telegram).")
         return
     candidates = db.list_prune_candidates(**filters)
     if args.dry_run:
@@ -545,11 +544,11 @@ def _export_markdown(db, args, filters, redact):
         try:
             data, exported_path, _ = _export_one(row["id"], include_lineage=lineage_is_logical)
         except FileExistsError as e:
-            print(f"跳过已存在的导出：{e}。传入 --force 可覆盖。")
+            print(f"Skipping existing export: {e}. Pass --force to overwrite.")
             continue
         if data and exported_path:
             exported += 1
-    print(f"已导出 {exported} 个会话到 {output_dir}")
+    print(f"Exported {exported} session(s) to {output_dir}")
 
 
 def _export_markdown_single(db, args, export_one, output_dir, lineage_is_logical):
@@ -566,16 +565,16 @@ def _export_markdown_single(db, args, export_one, output_dir, lineage_is_logical
                 target_id, include_lineage=(target_id == resolved_session_id and lineage_is_logical),
             )
         except FileExistsError as e:
-            print(f"导出已存在：{e}。传入 --force 可覆盖。")
+            print(f"Export already exists: {e}. Pass --force to overwrite.")
             return
         if not data or not exported_path:
-            print(f"会话 '{target_id}' 在导出过程中消失；未删除任何内容。")
+            print(f"Session '{target_id}' disappeared during export; nothing was deleted.")
             return
         exported_items.append((data, exported_path, snapshots))
     message_count = sum(len(data.get("messages") or []) for data, _path, _ in exported_items)
     n = len(exported_items)
-    print(f"已导出 {n} 个会话（{message_count} 条消息）"
-          f"到 {exported_items[0][1] if n == 1 else output_dir}")
+    print(f"Exported {n} session{'' if n == 1 else 's'} ({message_count} message{'' if message_count == 1 else 's'}) "
+          f"to {exported_items[0][1] if n == 1 else output_dir}")
     if not args.delete_after_verified:
         return
     # verify_export_file proves file == dict; store == dict is decided inside delete_session's transaction
@@ -584,7 +583,7 @@ def _export_markdown_single(db, args, export_one, output_dir, lineage_is_logical
     for data, exported_path, snapshots in exported_items:
         ok, reason = verify_export_file(exported_path, data)
         if not ok:
-            print(f"导出校验失败；不删除会话 '{data.get('id')}'：{reason}")
+            print(f"Export verification failed; not deleting session '{data.get('id')}': {reason}")
             return
         expected_messages.update(snapshots)
     try:
@@ -592,14 +591,15 @@ def _export_markdown_single(db, args, export_one, output_dir, lineage_is_logical
             resolved_session_id, sessions_dir=_sessions_dir(), expected_delete_ids=delete_target_ids,
             expected_display_messages=expected_messages, exclude_active_write_guards=True,
         ):
-            print(f"已导出，但会话 '{resolved_session_id}' 未被删除，因为其历史或委托集已变化。")
+            print(f"Exported, but session '{resolved_session_id}' was not deleted because its history or delegate set "
+                  "changed after export.")
             return
     except SessionActiveWriteGuardError as exc:
-        print(f"已导出，但未删除：{exc}")
+        print(f"Exported, but not deleted: {exc}")
         return
     delegates = len(delete_target_ids) - 1
-    delegate_suffix = f"，以及 {delegates} 个委托会话" if delegates else ""
-    print(f"已删除导出会话 '{resolved_session_id}'{delegate_suffix}。")
+    delegate_suffix = f" and {delegates} delegate session{'' if delegates == 1 else 's'}" if delegates else ""
+    print(f"Deleted exported session '{resolved_session_id}'{delegate_suffix}.")
 
 
 # -- delete / prune / archive -------------------------------------------------
@@ -609,20 +609,20 @@ def _cmd_delete(db, args):
     if not resolved_session_id:
         return _not_found(args.session_id)
     # The delete is honored (explicit id), but a pin is a "keep" flag: say so instead of silently destroying it.
-    _pinned_note = "（此会话已被固定）" if (db.get_session(resolved_session_id) or {}).get("pinned") else ""
+    _pinned_note = " (this session is PINNED)" if (db.get_session(resolved_session_id) or {}).get("pinned") else ""
     if not args.yes:
-        if not _confirm_prompt(f"删除会话 '{resolved_session_id}'{_pinned_note} 及其所有消息？[y/N] "):
-            print("已取消。")
+        if not _confirm_prompt(f"Delete session '{resolved_session_id}'{_pinned_note} and all its messages? [y/N] "):
+            print("Cancelled.")
             return
     elif _pinned_note:
-        print(f"警告：正在删除已固定的会话 '{resolved_session_id}'。")
+        print(f"Warning: deleting a pinned session '{resolved_session_id}'.")
     try:
         if not db.delete_session(resolved_session_id, sessions_dir=_sessions_dir(), exclude_active_write_guards=True):
             return _not_found(args.session_id)
     except SessionActiveWriteGuardError as exc:
-        print(f"无法删除活动中的会话：{exc}")
+        print(f"Cannot delete active session: {exc}")
         return 1
-    print(f"已删除会话 '{resolved_session_id}'。")
+    print(f"Deleted session '{resolved_session_id}'.")
 
 
 #: Age floor for `prune --never-active`; generous: a young never-active row may be a chat nobody replied to yet.
@@ -643,34 +643,34 @@ def _prune_never_active_keyed(db, args):
     if older_than is not None:
         seconds = parse_duration_seconds(str(older_than))
         if seconds is None:
-            print(f"错误：--older-than '{older_than}' 不是合法时长。"
-                  "请使用天数（纯数字），或用 '2d' / '1w' 这样的形式。")
+            print(f"Error: --older-than '{older_than}' is not a duration. "
+                  "Use a bare number of days or a form like '2d' / '1w'.")
             return
         days = seconds / 86400.0
     candidates = db.list_never_active_keyed_sessions(older_than_days=days)
     if not candidates:
-        print(f"没有早于 {days:g} 天的从未活跃的带键会话。")
+        print(f"No never-active keyed sessions older than {days:g} day(s).")
         return
     shown = candidates if args.dry_run else candidates[:15]
-    print(f"{len(candidates)} 个早于 {days:g} 天的从未活跃的带键会话 "
-          "— 没有消息、token、工具调用或标题：")
+    print(f"{len(candidates)} never-active keyed session(s) older than {days:g} day(s) "
+          "— no messages, tokens, tool calls or title:")
     for s in shown:
         print(f"  {s['id']}  {format_epoch(s.get('started_at')):<17} {(s.get('source') or '-'):<10} "
               f"{s.get('session_key') or '-'}")
     if len(candidates) > len(shown):
         print_truncated(len(candidates) - len(shown))
     if args.dry_run:
-        print("试运行 — 未删除任何内容。")
+        print("Dry run — nothing deleted.")
         return
-    if not args.yes and not _confirm_prompt(f"删除 {len(candidates)} 个会话？[y/N] "):
-        print("已中止。")
+    if not args.yes and not _confirm_prompt(f"Delete {len(candidates)} session(s)? [y/N] "):
+        print("Aborted.")
         return
     deleted, routing_deleted, skipped = db.prune_never_active_keyed_sessions(
         older_than_days=days, sessions_dir=_sessions_dir()
     )
-    print(f"已删除 {deleted} 个从未活跃的会话和 {routing_deleted} 条过期路由记录。")
+    print(f"Deleted {deleted} never-active session(s) and {routing_deleted} stale routing entr(ies).")
     if skipped:
-        print(f"跳过了 {skipped} 个带活动回合或压缩锁的会话。")
+        print(f"Skipped {skipped} session(s) with a live turn or compression lock.")
 
 
 def _note_pinned_skipped(db, filters, action):
@@ -681,13 +681,14 @@ def _note_pinned_skipped(db, filters, action):
     skipped = int(db.count_prune_matches(**filters, pinned_only=True))
     if not skipped:
         return
+    suffix = "" if skipped == 1 else "s"
     if action == "prune":
-        verb = "删除"
-        optin = "传入 --include-pinned 可一并删除，或先用 `hermes sessions unpin <id>` 取消固定。"
+        verb = "deleted"
+        optin = "Pass --include-pinned to delete them anyway, or unpin first with `hermes sessions unpin <id>`."
     else:
-        verb, optin = "归档", "先用 `hermes sessions unpin <id>` 取消固定即可将其纳入。"
-    print(f"注意：{skipped} 个已固定的会话也符合这些筛选条件，但不会被{verb}"
-          f"（固定表示保留）。{optin}")
+        verb, optin = "archived", "Unpin first with `hermes sessions unpin <id>` to include them."
+    print(f"Note: {skipped} pinned session{suffix} also match these filters but will NOT be {verb} "
+          f"(pin is a keep flag). {optin}")
 
 
 def _cmd_prune_or_archive(db, args, action):
@@ -703,11 +704,11 @@ def _cmd_prune_or_archive(db, args, action):
     try:
         filters = build_prune_filters(args)
     except ValueError as e:
-        print(f"错误：{e}")
+        print(f"Error: {e}")
         return 1
     if not prune and not any(v for k, v in filters.items() if k != "older_than_days"):
-        print("拒绝归档所有已结束的会话：请至少传入一个"
-              "筛选条件（例如 --newer-than 5h、--source cli、--title codex）。")
+        print("Refusing to archive every ended session: pass at least one "
+              "filter (e.g. --newer-than 5h, --source cli, --title codex).")
         return
 
     # Prune skips archived rows unless --include-archived; archive only targets not-yet-archived rows.
@@ -724,39 +725,39 @@ def _cmd_prune_or_archive(db, args, action):
     # misdescribe its effect.
     skipped_open = db.count_open_prune_matches(**filters) if prune else 0
     if skipped_open:
-        print(f"注意：{skipped_open} 个未结束的会话也符合这些筛选条件，但会被跳过，"
-              "因为 prune 只删除已结束的会话。可用 `hermes sessions delete <id>` "
-              "显式删除其中一个。")
+        print(f"Note: {skipped_open} open session{'' if skipped_open == 1 else 's'} also match these filters but "
+              "will be skipped because prune only deletes ended sessions. Use `hermes sessions delete <id>` "
+              "to remove one explicitly.")
     if not candidates:
-        print(f"没有匹配的会话（{describe_filters(filters)}）。")
+        print(f"No sessions match ({describe_filters(filters)}).")
         return
     # Candidates are oldest-activity-first; show the span so a long-lived but recently used
     # conversation cannot look old merely by creation date.
     _span = (
-        f"最早活动 {format_epoch(candidates[0].get('last_active'))}，"
-        f"最近活动 {format_epoch(candidates[-1].get('last_active'))}"
+        f"oldest activity {format_epoch(candidates[0].get('last_active'))}, "
+        f"newest activity {format_epoch(candidates[-1].get('last_active'))}"
     )
     if args.dry_run or not args.yes:
         shown = candidates if args.dry_run else candidates[:15]
-        print(f"{len(candidates)} 个会话匹配（{describe_filters(filters)}；{_span}）：")
+        print(f"{len(candidates)} session(s) match ({describe_filters(filters)}; {_span}):")
         for s in shown:
             model = (s.get("model") or "-").split("/")[-1][:24]
             print(f"  {s['id']}  {format_epoch(s.get('last_active')):<17} {s['source']:<10} {model:<24} "
-                  f"{s['message_count']:>4} 条消息  {(s.get('title') or '')[:36]}")
+                  f"{s['message_count']:>4} msgs  {(s.get('title') or '')[:36]}")
         if len(candidates) > len(shown):
             print_truncated(len(candidates) - len(shown))
         if args.dry_run:
-            print(f"试运行 — 未{'删除' if prune else '归档'}任何内容。")
+            print(f"Dry run — nothing {'deleted' if prune else 'archived'}.")
             return
-    verb = "删除" if prune else "归档"
-    if not args.yes and not _confirm_prompt(f"{verb}这 {len(candidates)} 个会话（{_span}）？[y/N] "):
-        print("已取消。")
+    verb = "Delete" if prune else "Archive"
+    if not args.yes and not _confirm_prompt(f"{verb} these {len(candidates)} session(s) ({_span})? [y/N] "):
+        print("Cancelled.")
         return
     if prune:
-        print(f"已清理 {db.prune_sessions(sessions_dir=_sessions_dir(), exclude_active_write_guards=True, **filters)} 个会话。")
+        print(f"Pruned {db.prune_sessions(sessions_dir=_sessions_dir(), exclude_active_write_guards=True, **filters)} session(s).")
     else:
-        print(f"已归档 {db.archive_sessions(**filters)} 个会话。它们会从列表中隐藏，"
-              "但完全可恢复（未删除任何内容）。")
+        print(f"Archived {db.archive_sessions(**filters)} session(s). They're hidden from listings "
+              "but fully recoverable (nothing was deleted).")
 
 
 # -- titles / pins -----------------------------------------------------------
@@ -768,18 +769,18 @@ def _cmd_rename(db, args):
     title = " ".join(args.title)
     # Empty titles render as "—" and newlines corrupt the `list` table; length is validated in set_session_title.
     if not title.strip():
-        print("错误：标题不能为空或仅含空白字符。")
+        print("Error: title cannot be empty or whitespace-only.")
         return 1
     if "\n" in title or "\r" in title:
-        print("错误：标题不能包含换行符。")
+        print("Error: title cannot contain newlines.")
         return 1
     try:
         if not db.set_session_title(resolved_session_id, title):
             return _not_found(args.session_id)
     except ValueError as e:
-        print(f"错误：{e}")
+        print(f"Error: {e}")
         return 1
-    print(f"会话 '{resolved_session_id}' 已重命名为：{title}")
+    print(f"Session '{resolved_session_id}' renamed to: {title}")
 
 
 def _cmd_pin(db, args, pinning):
@@ -794,7 +795,7 @@ def _cmd_pin(db, args, pinning):
         resolved = db.resolve_session_id(raw_id)
         if resolved and db.set_session_pinned(resolved, pinning):
             title = db.get_session_title(resolved)
-            print(f"已{'固定' if pinning else '取消固定'}会话 '{resolved}'。{f'  （{title}）' if title else ''}")
+            print(f"{'Pinned' if pinning else 'Unpinned'} session '{resolved}'.{f'  ({title})' if title else ''}")
         else:
             failures += _not_found(raw_id)
     return 1 if failures else None
@@ -824,10 +825,10 @@ def _cmd_retitle_skills(db, args):
     apply_changes = bool(getattr(args, "apply", False))
     candidates = db.list_skill_scaffolded_sessions(limit=limit)
     if not candidates:
-        print("没有通过 /skill 调用命名的会话。")
+        print("No sessions were titled from a /skill invocation.")
         return
-    mode = "" if apply_changes else "（试运行 — 传入 --apply 才会写入）"
-    print(f"{len(candidates)} 个会话通过 /skill 打开{mode}：")
+    mode = "" if apply_changes else " (dry run — pass --apply to write)"
+    print(f"{len(candidates)} session(s) opened with a /skill{mode}:")
     changed = 0
     for row in candidates:
         session_id = row["id"]
@@ -838,7 +839,7 @@ def _cmd_retitle_skills(db, args):
         if not new_title[0].isalnum():
             # Non-title: an auxiliary model occasionally answers the prompt instead of titling it
             # ('$ df -h /'). This is a REPAIR — never replace a serviceable title with that.
-            print(f"  {session_id}\n    保留 {row['title']!r} — 得到 {new_title!r}")
+            print(f"  {session_id}\n    kept {row['title']!r} — got {new_title!r}")
             continue
         print(f"  {session_id}\n    {row['title']!r}\n    → {new_title!r}")
         changed += 1
@@ -850,14 +851,14 @@ def _cmd_retitle_skills(db, args):
             deduped = db.get_next_title_in_lineage(new_title)
             try:
                 db.set_session_title(session_id, deduped)
-                print(f"    （已重命名为 {deduped!r} — 标题已被占用）")
+                print(f"    (renamed to {deduped!r} — title was taken)")
             except ValueError as e:
-                print(f"    已跳过：{e}")
+                print(f"    skipped: {e}")
                 changed -= 1
     if not changed:
-        print("  所有标题都已反映用户的请求。")
+        print("  every title already reflects the user's request.")
     elif apply_changes:
-        print(f"✓ 已重新命名 {changed} 个会话。")
+        print(f"✓ Re-titled {changed} session(s).")
 
 
 def _cmd_browse(db, args):
@@ -867,16 +868,16 @@ def _cmd_browse(db, args):
     )
     if not sessions:
         db.close()
-        print("未找到任何会话。")
+        print("No sessions found.")
         return
     try:  # keep the DB open: the picker uses it for status tags and 'd' delete
         selected_id = _session_browse_picker(sessions, session_db=db)
     finally:
         db.close()
     if not selected_id:
-        print("已取消。")
+        print("Cancelled.")
         return
-    print(f"正在恢复会话：{selected_id}")
+    print(f"Resuming session: {selected_id}")
     from hermes_cli.relaunch import relaunch
     relaunch(["--resume", selected_id])  # won't return after execvp
 
@@ -890,38 +891,38 @@ def _print_size_change(db, before_mb, prefix=""):
     logical_after = db.logical_size_bytes()
     after_mb = logical_after / (1024 * 1024) if logical_after is not None else _size_mb(db.db_path)
     delta = _size_delta_label(before_mb - after_mb)
-    print(f"{prefix}数据库大小：{before_mb:.1f} MB -> {after_mb:.1f} MB（{delta}）")
+    print(f"{prefix}Database size: {before_mb:.1f} MB -> {after_mb:.1f} MB ({delta})")
 
 
 def _cmd_optimize(db, args):
     before_mb = _size_mb(db.db_path)
-    print("正在优化会话存储（FTS 合并 + VACUUM）……")
+    print("Optimizing session store (FTS merge + VACUUM)…")
     try:
         n = db.vacuum()  # merges FTS5 segments then VACUUMs; returns indexes merged
     except Exception as e:
-        print(f"错误：优化失败：{e}")
+        print(f"Error: optimization failed: {e}")
         return
-    print(f"已优化 {n} 个 FTS 索引。")
+    print(f"Optimized {n} FTS index(es).")
     _print_size_change(db, before_mb)
 
 
 def _cmd_clean_markers(db, args):
-    print(f"{'试运行 — 正在扫描' if args.dry_run else '正在扫描'}过期的工具调用标记行（#78148）……")
+    print(f"{'Dry run — scanning' if args.dry_run else 'Scanning'} for stale tool-call marker rows (#78148)…")
     report = db.purge_stale_tool_call_markers(dry_run=args.dry_run, backup=not args.no_backup)
     if report["rows_affected"] == 0:
-        print("✓ 未发现受影响的行 — 无需清理。")
+        print("✓ No affected rows found — nothing to clean.")
     elif args.dry_run:
-        print(f"将清除 {report['rows_affected']} 行：id {report['row_ids']}")
+        print(f"Would clear {report['rows_affected']} row(s): ids {report['row_ids']}")
     else:
         if report["backup_path"]:
-            print(f"  备份：{report['backup_path']}")
-        print(f"✓ 已清除 {report['rows_affected']} 行。")
+            print(f"  backup: {report['backup_path']}")
+        print(f"✓ Cleared {report['rows_affected']} row(s).")
 
 
 def _cmd_optimize_storage(db, args):
     db_path = db.db_path
     if not db.fts_optimize_available():
-        print("搜索索引已是紧凑布局 — 无需操作。")
+        print("Search index is already on the compact layout — nothing to do.")
         return
     before_bytes = os.path.getsize(db_path) if db_path.exists() else 0
     before_mb = before_bytes / (1024 * 1024)
@@ -933,83 +934,83 @@ def _cmd_optimize_storage(db, args):
     except Exception:
         free_bytes = None
     need_bytes = before_bytes if do_vacuum else int(before_bytes * 0.3)
-    print(f"搜索索引优化：{db_path}\n  当前数据库大小：{before_mb:.1f} MB")
+    print(f"Search-index optimization for {db_path}\n  Current database size: {before_mb:.1f} MB")
     if free_bytes is not None:
-        print(f"  可用磁盘：{free_bytes / (1024*1024):.0f} MB "
-              f"（完成约需 {need_bytes / (1024*1024):.0f} MB{'（含 VACUUM）' if do_vacuum else ''}）")
+        print(f"  Free disk: {free_bytes / (1024*1024):.0f} MB "
+              f"(need ~{need_bytes / (1024*1024):.0f} MB to complete{' incl. VACUUM' if do_vacuum else ''})")
         if free_bytes < need_bytes:
-            print("\n⚠ 可用磁盘空间不足，无法安全完成。请释放空间，或使用 --no-vacuum "
-                  "（会重建索引，但要等到之后再执行 VACUUM 才会回收空间）。")
+            print("\n⚠ Not enough free disk to complete safely. Free up space, or run with --no-vacuum "
+                  "(rebuilds the index but doesn't reclaim space until a later VACUUM).")
             return
     if before_mb > 500:
-        print("  在较大的数据库上可能需要一段时间。它在前台运行，下方会显示进度；"
-              "可以安全地按 Ctrl-C 后重跑（会断点续传）。")
+        print("  This may take a while on a large database. It runs in the foreground with progress below; "
+              "safe to Ctrl-C and re-run (it resumes).")
     if not getattr(args, "yes", False):
         try:
-            resp = input("继续？[y/N] ").strip().lower()
+            resp = input("Proceed? [y/N] ").strip().lower()
         except EOFError:
             resp = ""
         if resp not in ("y", "yes"):
-            print("已取消。")
+            print("Cancelled.")
             return
     _last = {"phase": None}
-    labels = {"teardown": "正在回收旧索引", "vacuum": "正在压缩数据库（VACUUM）", "done": "完成"}
+    labels = {"teardown": "Reclaiming old index", "vacuum": "Compacting database (VACUUM)", "done": "Done"}
 
     def _progress(info):
         phase = info.get("phase")
         if phase == "backfill":
-            print(f"\r  正在重建索引：{info.get('percent', 0):3d}% "
+            print(f"\r  Rebuilding index: {info.get('percent', 0):3d}% "
                   f"({info.get('indexed',0):,}/{info.get('total',0):,})", end="", flush=True)
         elif phase != _last["phase"]:
             print(f"\n  {labels.get(phase, phase)}…", flush=True)
         _last["phase"] = phase
-    print("正在优化搜索索引存储……")
+    print("Optimizing search-index storage…")
     try:
         result = db.optimize_fts_storage(progress_cb=_progress, vacuum=do_vacuum)
     except Exception as e:
-        print(f"\n错误：优化失败：{e}\n没有数据丢失。重新运行即可继续。")
+        print(f"\nError: optimization failed: {e}\nNo data was lost. Re-run to resume.")
         return
     if not result.get("ok"):
-        print(f"\n无法优化：{result.get('reason', '未知')}")
+        print(f"\nCould not optimize: {result.get('reason', 'unknown')}")
         return
-    print("\n✓ 搜索索引已优化。")
+    print("\n✓ Search index optimized.")
     _print_size_change(db, before_mb, prefix="  ")
     if result.get("vacuumed") is False:
-        print("  （VACUUM 被跳过或失败 — 之后可运行 `hermes sessions optimize`  回收释放的空间。）")
+        print("  (VACUUM was skipped or failed — run `hermes sessions optimize` later to reclaim freed space.)")
 
 
 def _cmd_repair_routing(db, args):
     records = db.find_orphaned_gateway_sessions(max_gap_s=getattr(args, "max_gap_seconds", None))
     adoptable = [r for r in records if r["adoptable"]]
     for record in records:
-        print(f"{record['orphan_id']}  （{record['source']}，{record['message_count']} 条消息）")
+        print(f"{record['orphan_id']}  ({record['source']}, {record['message_count']} messages)")
         if record["adoptable"]:
-            print(f"  → 归入 {record['session_key']}（来自 {record['donor_id']}，"
-                  f"依据：{record['evidence']}）")
+            print(f"  → adopt into {record['session_key']} (from {record['donor_id']}, "
+                  f"evidence: {record['evidence']})")
         else:
-            print(f"  ✗ 无法修复 — {record['reason']}")
+            print(f"  ✗ not repairable — {record['reason']}")
     if not records:
-        print("✓ 没有网关会话缺失其路由标识。")
+        print("✓ No gateway sessions are missing their routing identity.")
         return
     if not adoptable:
-        print(f"\n发现 {len(records)} 个孤儿会话，均无法明确修复。无需操作。")
+        print(f"\n{len(records)} orphaned session(s) found, none unambiguously repairable. Nothing to do.")
         return
     if not getattr(args, "apply", False):
-        print(f"\n{len(records)} 个孤儿会话中有 {len(adoptable)} 个可修复。"
-              "重新运行并加上 --apply 以执行修复。")
+        print(f"\n{len(adoptable)} of {len(records)} orphaned session(s) can be repaired. "
+              "Re-run with --apply to perform them.")
         return
-    print("\n应用前请先停止网关 — 正在运行的网关仍在内存中持有旧的路由映射。")
-    if not _confirm_prompt(f"归入 {len(adoptable)} 个孤儿会话？[y/N] "):
-        print("已中止 — 未做任何更改。")
+    print("\nStop the gateway before applying — a running gateway still holds the old routing mapping in memory.")
+    if not _confirm_prompt(f"Adopt {len(adoptable)} orphaned session(s)? [y/N] "):
+        print("Aborted — nothing was changed.")
         return
     repaired = 0
     for record in adoptable:
         if db.adopt_orphaned_gateway_session(record["orphan_id"], record["donor_id"]):
             repaired += 1
-            print(f"✓ {record['orphan_id']} 现在归属于 {record['session_key']}")
+            print(f"✓ {record['orphan_id']} now owns {record['session_key']}")
         else:
-            print(f"✗ {record['orphan_id']} 未被归入（该行自报告以来已发生变化）")
-    print(f"\n已修复 {len(adoptable)} 个会话中的 {repaired} 个。")
+            print(f"✗ {record['orphan_id']} was not adopted (the row changed since it was reported)")
+    print(f"\nRepaired {repaired} of {len(adoptable)} session(s).")
 
 
 def _repair_prompts_pin_names(row) -> list[str] | None:
@@ -1164,12 +1165,12 @@ def _cmd_repair_prompts(db, args):
 
 
 def _cmd_stats(db, args):
-    print(f"会话总数：{db.session_count()}\n消息总数：{db.message_count()}")
+    print(f"Total sessions: {db.session_count()}\nTotal messages: {db.message_count()}")
     for src in ("cli", "telegram", "discord", "whatsapp", "slack"):
         if (c := db.session_count(source=src)) > 0:
-            print(f"  {src}：{c} 个会话")
+            print(f"  {src}: {c} sessions")
     if db.db_path.exists():
-        print(f"数据库大小：{_size_mb(db.db_path):.1f} MB")
+        print(f"Database size: {_size_mb(db.db_path):.1f} MB")
 
 
 # -- dispatch -----------------------------------------------------------------

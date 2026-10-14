@@ -234,9 +234,9 @@ def _fallback_picker(sessions: list) -> Optional[str]:
             idx = int(val) - 1
             if 0 <= idx < len(sessions):
                 return sessions[idx]["id"]
-            print(f"  选择无效。请输入 1-{len(sessions)} 或 q 取消。")
+            print(f"  Invalid selection. Enter 1-{len(sessions)} or q to cancel.")
         except ValueError:
-            print("  输入无效。请输入编号或 q 取消。")
+            print("  Invalid input. Enter a number or q to cancel.")
         except (KeyboardInterrupt, EOFError):
             print()
             return None
@@ -249,7 +249,7 @@ def _session_browse_picker(sessions: list, session_db=None) -> Optional[str]:
     empty) prompts y/n and deletes via ``SessionDB.delete_session``.
     """
     if not sessions:
-        print("未找到任何会话。")
+        print("No sessions found.")
         return None
     _annotate_session_statuses(sessions, session_db)
 

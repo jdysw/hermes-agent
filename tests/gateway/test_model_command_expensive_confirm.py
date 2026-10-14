@@ -158,7 +158,7 @@ async def test_failed_inplace_swap_aborts_commit(tmp_path, monkeypatch):
 
     # Error surfaced to the user, not a success confirmation.
     assert result is not None
-    assert "失败" in result
+    assert "failed" in result.lower()
     # The broken switch must NOT have been committed anywhere.
     assert runner._session_model_overrides == {}
     # The working cached agent must NOT have been evicted.

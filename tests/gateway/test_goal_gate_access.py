@@ -70,7 +70,7 @@ async def test_gateway_gate_add_requires_explicit_admin(admins, user_id):
 
     result = await GatewayRunner._handle_goal_command(runner, _event(user_id))
 
-    assert "显式配置的" in result and "网关管理员" in result
+    assert "explicitly configured gateway admin" in result
     manager.add_gate.assert_not_called()
 
 
@@ -83,7 +83,7 @@ async def test_gateway_explicit_admin_can_add_goal_gate():
 
     result = await GatewayRunner._handle_goal_command(runner, _event("admin-1"))
 
-    assert "门禁已添加" in result
+    assert "Gate added" in result
     manager.add_gate.assert_called_once_with(
         "touch /tmp/host-in-the-shell"
     )
@@ -108,8 +108,8 @@ async def test_gateway_group_gate_add_uses_group_admin_scope():
         _event("group-admin", chat_type="group"),
     )
 
-    assert "显式配置的" in denied and "网关管理员" in denied
-    assert "门禁已添加" in allowed
+    assert "explicitly configured gateway admin" in denied
+    assert "Gate added" in allowed
     manager.add_gate.assert_called_once_with(
         "touch /tmp/host-in-the-shell"
     )

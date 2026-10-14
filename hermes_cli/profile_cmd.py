@@ -1,7 +1,7 @@
-"""``hermes profile`` 命令——每个 action 一个处理函数，由 ``PROFILE_ACTIONS`` 分发。
+"""``hermes profile`` command — one handler per action, dispatched by ``PROFILE_ACTIONS``.
 
-对 ``hermes_cli.profiles`` 的导入保持惰性（放在各处理函数内部），以便测试 monkeypatch
-该模块的属性。
+Imports from ``hermes_cli.profiles`` stay lazy (inside each handler) so tests can monkeypatch
+the module attributes.
 """
 
 from __future__ import annotations
@@ -10,17 +10,6 @@ from pathlib import Path
 import os
 import sys
 from typing import NoReturn, Optional
-import unicodedata
-
-
-def _display_width(text: str) -> int:
-    """终端显示宽度：CJK/全角字符占 2 列，其余占 1 列。"""
-    return sum(2 if unicodedata.east_asian_width(ch) in ("W", "F") else 1 for ch in text)
-
-
-def _pad(text: str, width: int) -> str:
-    """按显示宽度把 *text* 左对齐补齐到 *width* 列（一个汉字算 2 列）。"""
-    return text + " " * max(0, width - _display_width(text))
 
 
 def _die(msg: str, code: int = 1, *, err: bool = False) -> NoReturn:
@@ -29,7 +18,7 @@ def _die(msg: str, code: int = 1, *, err: bool = False) -> NoReturn:
 
 
 def _confirm(prompt: str) -> bool:
-    """y/N 提示；EOF / Ctrl-C 视为“否”。"""
+    """y/N prompt; EOF / Ctrl-C count as "no"."""
     try:
         answer = input(prompt).strip().lower()
     except (EOFError, KeyboardInterrupt):
@@ -42,31 +31,31 @@ def _is_active(p, active: str) -> bool:
 
 
 def _env_file_has_key(env_path: Path, key: str) -> bool:
-    """当 *key* is assigned in *env_path* (unreadable/mis-encoded file → False, never aborts)."""
+    """True when *key* is assigned in *env_path* (unreadable/mis-encoded file → False, never aborts)."""
     from agent.secret_scope import load_env_file
 
     return key in load_env_file(env_path)
 
 
 def _render_distribution_plan(plan) -> None:
-    """打印待安装发行版的可读摘要。"""
+    """Print a human-readable summary of a pending distribution install."""
     from hermes_cli.profile_distribution import MANIFEST_FILENAME
     mf = plan.manifest
-    print(f"\n发行版：{mf.name} v{mf.version}")
+    print(f"\nDistribution: {mf.name} v{mf.version}")
     if mf.description:
         print(f"  {mf.description}")
     if mf.author:
-        print(f"  作者：    {mf.author}")
+        print(f"  Author:   {mf.author}")
     if mf.hermes_requires:
-        print(f"  依赖：    Hermes {mf.hermes_requires}")
-    print(f"  来源：    {plan.provenance}")
-    print(f"  目标目录：{plan.target_dir}")
+        print(f"  Requires: Hermes {mf.hermes_requires}")
+    print(f"  Source:   {plan.provenance}")
+    print(f"  Target:   {plan.target_dir}")
     if plan.existing:
-        # 更新已有发行版（覆盖发行版归属的文件、保留配置、不动用户数据）
+        # Updating an existing distribution (dist-owned overwritten, config preserved, user
         # data untouched) vs overwriting a hand-built plain profile (same mechanics, but the
         # user didn't sign up for it).
         if (plan.target_dir / MANIFEST_FILENAME).is_file():
-            print("  （profile 已存在，只覆盖发行版归属的文件）")
+            print("  (profile exists — will overwrite distribution-owned files only)")
         else:
             print(
                 "  ⚠ Profile exists but is NOT a distribution.  Installing here will\n"
@@ -76,42 +65,43 @@ def _render_distribution_plan(plan) -> None:
                 "    but any hand-edits to distribution-owned files will be lost."
             )
     if mf.env_requires:
-        print("\n  环境变量：")
+        print("\n  Env vars:")
         for er in mf.env_requires:
             tag = "required" if er.required else "optional"
             # Shell environment OR the target profile's .env — don't nag about set keys.
             already = os.environ.get(er.name) is not None or (
                 plan.target_dir.is_dir() and _env_file_has_key(plan.target_dir / ".env", er.name)
             )
-            status = "✓ set" if already else ("需要设置" if er.required else "—")
+            status = "✓ set" if already else ("needs setting" if er.required else "—")
             line = f"    • {er.name} ({tag}, {status})"
             if er.description:
                 line += f" — {er.description}"
             print(line)
     if plan.has_cron:
         print(
-            "\n  ⚠ 该发行版附带 cron 任务，它们不会自动运行——请手动检查并启用。"
+            "\n  ⚠ This distribution ships cron jobs.  They will NOT run "
+            "automatically — review and enable manually."
         )
 
 
 def _profile_status(args):
-    """裸 ``hermes profile``——显示当前 profile 状态。"""
+    """Bare ``hermes profile`` — show current profile status."""
     from hermes_constants import display_hermes_home
     from hermes_cli.profiles import format_profile_label, get_active_profile_name, list_profiles
     profile_name = get_active_profile_name()
     dhh = display_hermes_home()
     current = next((p for p in list_profiles() if _is_active(p, profile_name)), None)
     label = format_profile_label(profile_name, current.display_name if current else "")
-    print(f"\n当前 profile：  {label}")
-    print(f"路径：          {dhh}")
+    print(f"\nActive profile: {label}")
+    print(f"Path:           {dhh}")
     if current is not None:
         p = current
         if p.model:
-            print(f"模型：          {p.model}" + (f" ({p.provider})" if p.provider else ""))
-        print(f"网关：          {'运行中' if p.gateway_running else '已停止'}")
-        print(f"技能：          已安装 {p.skill_count} 个")
+            print(f"Model:          {p.model}" + (f" ({p.provider})" if p.provider else ""))
+        print(f"Gateway:        {'running' if p.gateway_running else 'stopped'}")
+        print(f"Skills:         {p.skill_count} installed")
         if p.alias_path:
-            print(f"别名：          {p.alias_name or p.name} → hermes -p {p.name}")
+            print(f"Alias:          {p.alias_name or p.name} → hermes -p {p.name}")
     print()
 
 
@@ -120,15 +110,15 @@ def _profile_list(args):
     profiles = list_profiles()
     active = get_active_profile_name()
     if not profiles:
-        print("未找到任何 profile。")
+        print("No profiles found.")
         return
-    print(f"\n {'Profile':<16} {_pad('模型', 28)} {_pad('网关', 12)} {_pad('别名', 12)} 发行版")
+    print(f"\n {'Profile':<16} {'Model':<28} {'Gateway':<12} {'Alias':<12} {'Distribution'}")
     print(f" {'─' * 15}    {'─' * 27}    {'─' * 11}    {'─' * 11}    {'─' * 20}")
     for p in profiles:
         marker = " ◆" if _is_active(p, active) else "  "
         name = format_profile_label(p.name, p.display_name)
         model = (p.model or "—")[:26]
-        gw = "running" if p.gateway_running else "已停止"
+        gw = "running" if p.gateway_running else "stopped"
         alias = (p.alias_name or p.name) if p.alias_path and not p.is_default else "—"
         dist = f"{p.distribution_name}@{p.distribution_version or '?'}"[:30] if p.distribution_name else "—"
         print(f"{marker}{name:<15} {model:<28} {gw:<12} {alias:<12} {dist}")
@@ -163,9 +153,9 @@ def _profile_use(args):
     name = args.profile_name
     try:
         set_active_profile(name)
-        print("已切换到：default（~/.hermes）" if name == "default" else f"已切换到：{name}")
+        print("Switched to: default (~/.hermes)" if name == "default" else f"Switched to: {name}")
     except (ValueError, FileNotFoundError) as e:
-        _die(f"错误：{e}")
+        _die(f"Error: {e}")
 
 
 def _source_profile_dir(source_label: str) -> Path:
@@ -306,12 +296,12 @@ def _profile_delete(args):
     try:
         delete_profile(args.profile_name, yes=getattr(args, "yes", False))
     except (ValueError, FileNotFoundError, RuntimeError) as e:
-        _die(f"错误：{e}")
+        _die(f"Error: {e}")
 
 
 def _describe_target_dir(name: str) -> Path:
-    """``describe`` 用的 profile 目录：``default`` 映射到当前 home（get_hermes_home），
-    其余映射到各自命名的目录。"""
+    """Profile dir for ``describe``: ``default`` maps to the CURRENT home (get_hermes_home),
+    everything else to its named directory."""
     from hermes_cli import profiles as _profiles_mod
     if _profiles_mod.normalize_profile_name(name) == "default":
         from hermes_constants import get_hermes_home as _hh
@@ -327,46 +317,46 @@ def _profile_describe(args):
     text_value = getattr(args, "text", None)
     name = getattr(args, "profile_name", None)
     if all_flag and not auto_flag:
-        _die("profile describe：--all 需要 --auto", 2, err=True)
+        _die("profile describe: --all requires --auto", 2, err=True)
     if all_flag and (text_value or name):
-        _die("profile describe：--all 与 profile 名 / --text 互斥", 2, err=True)
+        _die("profile describe: --all is mutually exclusive with a profile name / --text", 2, err=True)
     if not all_flag and not name:
-        _die("profile describe：需要指定 profile 名（或使用 --all --auto）", 2, err=True)
+        _die("profile describe: profile name is required (or --all --auto)", 2, err=True)
     if text_value and auto_flag:
-        _die("profile describe：--text 与 --auto 互斥", 2, err=True)
+        _die("profile describe: --text is mutually exclusive with --auto", 2, err=True)
 
-    # 未请求任何操作时，显示当前描述。
+    # Show current description if no operation requested.
     if name and not text_value and not auto_flag:
         try:
             profile_dir = _describe_target_dir(name)
         except Exception as exc:
-            _die(f"错误：{exc}", err=True)
+            _die(f"Error: {exc}", err=True)
         if not profile_dir.is_dir():
-            _die(f"错误：找不到 profile '{name}'", err=True)
+            _die(f"Error: profile '{name}' not found", err=True)
         meta = _profiles_mod.read_profile_meta(profile_dir)
         desc = meta.get("description") or ""
         if not desc:
-            print(f"（'{name}' 尚未设置描述）")
+            print(f"(no description set for '{name}')")
         else:
-            tag = "[自动] " if meta.get("description_auto") else ""
+            tag = "[auto] " if meta.get("description_auto") else ""
             print(f"{tag}{desc}")
         sys.exit(0)
 
-    # --text 路径：直接写入用户手写的描述。
+    # --text path: just write the user-authored description.
     if text_value:
         try:
             _profiles_mod.write_profile_meta(_describe_target_dir(name), description=text_value, description_auto=False)
-            print(f"已更新 '{name}' 的描述。")
+            print(f"Description updated for '{name}'.")
         except Exception as exc:
-            _die(f"错误：{exc}", err=True)
+            _die(f"Error: {exc}", err=True)
         sys.exit(0)
 
-    # --auto 路径：调用 LLM 生成描述。
+    # --auto path: invoke the LLM describer.
     from hermes_cli import profile_describer as _pd
     if all_flag:
         targets = _pd.list_describable_profiles(missing_only=True)
         if not targets:
-            _die("所有 profile 都已设置描述。", 0)
+            _die("All profiles already have descriptions.", 0)
     else:
         targets = [name]
     ok_count = 0
@@ -374,9 +364,9 @@ def _profile_describe(args):
         outcome = _pd.describe_profile(tgt, overwrite=overwrite_flag)
         if outcome.ok:
             ok_count += 1
-            print(f"已为 '{outcome.profile_name}' 生成描述：{outcome.description}")
+            print(f"Described '{outcome.profile_name}': {outcome.description}")
         else:
-            print(f"profile describe {outcome.profile_name}：{outcome.reason}", file=sys.stderr)
+            print(f"profile describe {outcome.profile_name}: {outcome.reason}", file=sys.stderr)
     sys.exit(0 if (ok_count > 0 if all_flag else ok_count == 1) else 1)
 
 
@@ -388,28 +378,28 @@ def _profile_show(args):
         find_alias_for_profile, format_profile_label, read_profile_meta,
     )
     if not profile_exists(name):
-        _die(f"错误：profile '{name}' 不存在。")
+        _die(f"Error: Profile '{name}' does not exist.")
     profile_dir = get_profile_dir(name)
     model, provider = _read_config_model(profile_dir)
     gw = _check_gateway_running(profile_dir) or _served_by_running_multiplexer(name)
     dist_name, dist_version, dist_source = _read_distribution_meta(profile_dir)
     alias_name = find_alias_for_profile(name)
     display = read_profile_meta(profile_dir).get("display_name", "")
-    print(f"\nprofile：{format_profile_label(name, display)}")
-    print(f"路径：    {profile_dir}")
+    print(f"\nProfile: {format_profile_label(name, display)}")
+    print(f"Path:    {profile_dir}")
     if model:
-        print(f"模型：    {model}" + (f" ({provider})" if provider else ""))
-    print(f"网关：    {'运行中' if gw else '已停止'}")
-    print(f"技能：    {_count_skills(profile_dir)}")
-    print(f".env：    {'已存在' if (profile_dir / '.env').exists() else '未配置'}")
-    print(f"SOUL.md：{'已存在' if (profile_dir / 'SOUL.md').exists() else '未配置'}")
+        print(f"Model:   {model}" + (f" ({provider})" if provider else ""))
+    print(f"Gateway: {'running' if gw else 'stopped'}")
+    print(f"Skills:  {_count_skills(profile_dir)}")
+    print(f".env:    {'exists' if (profile_dir / '.env').exists() else 'not configured'}")
+    print(f"SOUL.md: {'exists' if (profile_dir / 'SOUL.md').exists() else 'not configured'}")
     if dist_name:
-        print(f"发行版：{dist_name}@{dist_version or '?'}")
+        print(f"Distribution: {dist_name}@{dist_version or '?'}")
         if dist_source:
-            print(f"安装来源：{dist_source}")
-        print(f"  （运行 `hermes profile info {name}` 查看完整清单）")
+            print(f"Installed from: {dist_source}")
+        print(f"  (run `hermes profile info {name}` for full manifest)")
     if alias_name:
-        print(f"别名：   {alias_name} → hermes -p {name}  ({_wrapper_path(alias_name)})")
+        print(f"Alias:   {alias_name} → hermes -p {name}  ({_wrapper_path(alias_name)})")
     print()
 
 
@@ -421,27 +411,32 @@ def _profile_alias(args):
     name = args.profile_name
     remove = getattr(args, "remove", False)
     custom_name = getattr(args, "alias_name", None)
-    if not profile_exists(name):
-        _die(f"错误：profile '{name}' 不存在。")
     alias_name = custom_name or name
     try:
         validate_alias_name(alias_name)
     except ValueError as exc:
-        _die(f"错误：{exc}")
-    if remove:
+        _die(f"Error: {exc}")
+    if remove:  # runs without the profile: an orphan alias outlives it
+        exists = profile_exists(name)
+        if custom_name and not exists:  # orphan cleanup is `alias <alias> --remove`
+            _die(f"Error: Profile '{name}' does not exist.")
         if remove_wrapper_script(alias_name):
-            print(f"✓ 已删除别名 '{alias_name}'")
+            print(f"✓ Removed alias '{alias_name}'")
+        elif not exists:
+            _die(f"Error: No alias '{alias_name}' and no profile '{name}'. `hermes doctor` lists orphan aliases.")
         else:
-            print(f"未找到可删除的别名 '{alias_name}'。")
+            print(f"No alias '{alias_name}' found to remove.")
         return
+    if not profile_exists(name):
+        _die(f"Error: Profile '{name}' does not exist.")
     collision = check_alias_collision(alias_name)
     if collision:
-        _die(f"错误：{collision}")
+        _die(f"Error: {collision}")
     wrapper_path = create_wrapper_script(alias_name, target=name if custom_name else None)
     if wrapper_path:
-        print(f"✓ 已创建别名：{wrapper_path}")
+        print(f"✓ Alias created: {wrapper_path}")
         if not _is_wrapper_dir_in_path():
-            print(f"⚠ {_get_wrapper_dir()} 不在你的 PATH 中。")
+            print(f"⚠ {_get_wrapper_dir()} is not in your PATH.")
 
 
 def _profile_rename(args):
@@ -449,10 +444,10 @@ def _profile_rename(args):
     try:
         new_dir = rename_profile(args.old_name, args.new_name)
         if normalize_profile_name(args.old_name) != "default":
-            print(f"\n已重命名 profile：{args.old_name} → {args.new_name}")
-            print(f"路径：{new_dir}\n")
+            print(f"\nProfile renamed: {args.old_name} → {args.new_name}")
+            print(f"Path: {new_dir}\n")
     except (ValueError, FileExistsError, FileNotFoundError) as e:
-        _die(f"错误：{e}")
+        _die(f"Error: {e}")
 
 
 def _profile_migrate_identity(args):
@@ -491,9 +486,9 @@ def _profile_export(args):
     try:
         output = args.output or str(get_profile_export_path(name))
         result_path = export_profile(name, output)
-        print(f"✓ 已导出 '{name}' 至 {result_path}")
+        print(f"✓ Exported '{name}' to {result_path}")
     except (ValueError, FileNotFoundError, OSError) as e:
-        _die(f"错误：{e}")
+        _die(f"Error: {e}")
 
 
 def _profile_import(args):
@@ -501,47 +496,47 @@ def _profile_import(args):
     try:
         profile_dir = import_profile(args.archive, name=getattr(args, "import_name", None))
         name = profile_dir.name
-        print(f"✓ 已导入 profile '{name}'：{profile_dir}")
+        print(f"✓ Imported profile '{name}' at {profile_dir}")
         if not check_alias_collision(name):
             wrapper_path = create_wrapper_script(name)
             if wrapper_path:
-                print(f"  已创建包装脚本：{wrapper_path}")
+                print(f"  Wrapper created: {wrapper_path}")
         print()
     except (ValueError, FileExistsError, FileNotFoundError) as e:
-        _die(f"错误：{e}")
+        _die(f"Error: {e}")
 
 
 def _profile_install(args):
     import tempfile
     from hermes_cli.profile_distribution import DistributionError, install_distribution, plan_install
     try:
-        # 预览：先暂存到临时目录、展示清单，再做真正的安装。
-        # 两段式暂存可确保用户拒绝时不产生任何副作用。
+        # Preview: stage into a scratch dir, show the manifest, then do the real install.
+        # The double-stage avoids any side-effects if the user declines.
         with tempfile.TemporaryDirectory(prefix="hermes_dist_preview_") as tmp:
             plan = plan_install(args.source, Path(tmp), override_name=getattr(args, "install_name", None))
             _render_distribution_plan(plan)
-            if not getattr(args, "yes", False) and not _confirm("\n是否继续安装？[y/N] "):
-                print("已取消安装。")
+            if not getattr(args, "yes", False) and not _confirm("\nProceed with install? [y/N] "):
+                print("Install cancelled.")
                 return
         plan = install_distribution(
             args.source, name=getattr(args, "install_name", None), force=getattr(args, "force", False),
             create_alias=getattr(args, "alias", False),
         )
-        print(f"\n✓ 已安装 '{plan.manifest.name}' v{plan.manifest.version}")
-        print(f"  profile 路径：{plan.target_dir}")
+        print(f"\n✓ Installed '{plan.manifest.name}' v{plan.manifest.version}")
+        print(f"  Profile path: {plan.target_dir}")
         if plan.manifest.env_requires:
             print(
-                f"  下一步：将 .env.EXAMPLE 复制为 .env 并填入必需的密钥：\n"
+                f"  Next: copy .env.EXAMPLE to .env and fill in required keys:\n"
                 f"    {plan.target_dir}/.env.EXAMPLE"
             )
         if plan.has_cron:
             print(
-                "  包含的 cron 任务不会自动调度。\n"
-                f"  查看方式：  hermes -p {plan.manifest.name} cron list"
+                "  Cron jobs were included but are NOT scheduled automatically.\n"
+                f"  Review them with:  hermes -p {plan.manifest.name} cron list"
             )
-        print(f"\n  使用方式：    hermes -p {plan.manifest.name} chat")
+        print(f"\n  Use with:      hermes -p {plan.manifest.name} chat")
     except (DistributionError, ValueError) as e:
-        _die(f"错误：{e}")
+        _die(f"Error: {e}")
 
 
 def _profile_update(args):
@@ -552,36 +547,36 @@ def _profile_update(args):
         current = read_manifest(get_profile_dir(canon))
         if current is None:
             _die(
-                f"错误：profile '{canon}' 不是发行版（缺少 distribution.yaml）。"
-                "只有通过 `hermes profile install` 安装的 profile 才能更新。"
+                f"Error: Profile '{canon}' is not a distribution (no distribution.yaml). "
+                "Only profiles installed via `hermes profile install` can be updated."
             )
         force_config = getattr(args, "force_config", False)
         if not getattr(args, "yes", False):
-            print(f"\n更新 '{canon}'，来源：{current.source or '（无来源）'}")
-            print(f"  当前版本 {current.version}")
+            print(f"\nUpdate '{canon}' from: {current.source or '(no source)'}")
+            print(f"  Currently at version {current.version}")
             if force_config:
-                print("  已设置 --force-config：config.yaml 将被覆盖。")
+                print("  --force-config set: config.yaml WILL be overwritten.")
             else:
-                print("  config.yaml 会被保留（如需覆盖请传 --force-config）。")
-            print("  用户数据（记忆、会话、auth、.env）不会被改动。")
-            if not _confirm("\n是否继续？[y/N] "):
-                print("已取消更新。")
+                print("  config.yaml will be preserved (pass --force-config to overwrite).")
+            print("  User data (memories, sessions, auth, .env) will NOT be touched.")
+            if not _confirm("\nProceed? [y/N] "):
+                print("Update cancelled.")
                 return
         plan = update_distribution(canon, force_config=force_config)
-        print(f"\n✓ 已更新 '{plan.manifest.name}' → v{plan.manifest.version}")
+        print(f"\n✓ Updated '{plan.manifest.name}' → v{plan.manifest.version}")
         if plan.has_cron:
-            print(f"  cron 文件已刷新。查看方式：  hermes -p {plan.manifest.name} cron list")
+            print(f"  Cron files were refreshed.  Review with:  hermes -p {plan.manifest.name} cron list")
     except (DistributionError, ValueError) as e:
-        _die(f"错误：{e}")
+        _die(f"Error: {e}")
 
 
 _INFO_FIELDS = (
-    ("description", "描述：        "),
-    ("author", "作者：        "),
-    ("license", "许可证：      "),
-    ("hermes_requires", "依赖：        Hermes "),
-    ("source", "来源：        "),
-    ("installed_at", "安装时间：    "),
+    ("description", "Description:  "),
+    ("author", "Author:       "),
+    ("license", "License:      "),
+    ("hermes_requires", "Requires:     Hermes "),
+    ("source", "Source:       "),
+    ("installed_at", "Installed:    "),
 )
 
 
@@ -590,30 +585,30 @@ def _profile_info(args):
     try:
         data = describe_distribution(args.profile_name)
     except (DistributionError, ValueError) as e:
-        _die(f"错误：{e}")
+        _die(f"Error: {e}")
     if not data:
-        print(f"profile '{args.profile_name}' 不是发行版（缺少 distribution.yaml）。")
+        print(f"Profile '{args.profile_name}' is not a distribution (no distribution.yaml).")
         return
-    print(f"\n发行版：{data.get('name')}")
-    print(f"版本：        {data.get('version', '?')}")
+    print(f"\nDistribution: {data.get('name')}")
+    print(f"Version:      {data.get('version', '?')}")
     for key, label in _INFO_FIELDS:
         if data.get(key):
             print(f"{label}{data[key]}")
     env_reqs = data.get("env_requires") or []
     if env_reqs:
-        print("\n环境变量：")
+        print("\nEnvironment variables:")
         for er in env_reqs:
-            tag = "必需" if er.get("required", True) else "可选"
+            tag = "required" if er.get("required", True) else "optional"
             line = f"  {er['name']} ({tag})"
             if er.get("description"):
-                line += f" —— {er['description']}"
+                line += f" — {er['description']}"
             print(line)
             if er.get("default") is not None:
-                print(f"      默认值：{er['default']}")
+                print(f"      default: {er['default']}")
     print()
 
 
-# 顺序与原 if/elif 链一致；None = 裸 ``hermes profile``。
+# Order mirrors the original if/elif chain; None = bare ``hermes profile``.
 PROFILE_ACTIONS = {
     None: _profile_status,
     'list': _profile_list,
@@ -635,7 +630,7 @@ PROFILE_ACTIONS = {
 
 
 def cmd_profile(args):
-    """profile 管理——创建、删除、列出、切换、别名。"""
+    """Profile management — create, delete, list, switch, alias."""
     handler = PROFILE_ACTIONS.get(getattr(args, "profile_action", None))
     if handler is not None:
         return handler(args)

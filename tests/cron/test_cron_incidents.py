@@ -374,7 +374,7 @@ def test_cli_list_and_ack(monkeypatch, tmp_path, capsys):
     )
     assert cron_incidents(filter_args) == 0
     out = capsys.readouterr().out
-    assert "未记录任何定时任务失败事件。" in out
+    assert "No cron failure incidents recorded." in out
 
     # Ack.
     ack_args = argparse.Namespace(
@@ -383,12 +383,12 @@ def test_cli_list_and_ack(monkeypatch, tmp_path, capsys):
     assert cron_incidents(ack_args) == 0
     assert inc.get_incident(inc_id)["state"] == "closed"
     out = capsys.readouterr().out
-    assert "已确认" in out
+    assert "acknowledged" in out.lower()
 
     # Ack again: already closed, still a clean exit.
     assert cron_incidents(ack_args) == 0
     out = capsys.readouterr().out
-    assert "已关闭" in out
+    assert "already closed" in out.lower()
 
     # Ack with a missing id is a usage error.
     missing_args = argparse.Namespace(

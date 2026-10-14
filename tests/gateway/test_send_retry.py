@@ -141,7 +141,7 @@ class TestSendWithRetryExhausted:
         assert len(adapter._send_calls) == 4
         # The notice content should mention delivery failure
         notice_content = adapter._send_calls[-1][1]
-        assert "发送失败" in notice_content
+        assert "delivery failed" in notice_content.lower() or "Message delivery failed" in notice_content
 
 
 # ---------------------------------------------------------------------------
@@ -163,7 +163,7 @@ class TestSendWithRetryFallback:
         assert result.success
         assert len(adapter._send_calls) == 2
         # Fallback content should be plain-text notice
-        assert "纯文本" in adapter._send_calls[1][1]
+        assert "plain text" in adapter._send_calls[1][1].lower()
 
 
 # ---------------------------------------------------------------------------
@@ -240,7 +240,7 @@ class TestSendWithRetryRateLimited:
         adapter = _StubAdapter()
         flood = SendResult(success=False, error="flood control exceeded, retry in 60 seconds")
         adapter._send_results = [flood, flood, flood]
-        with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+        with patch("asyncio.sleep", new_callable=AsyncMock):
             result = await adapter._send_with_retry("chat1", "hello", max_retries=2, base_delay=0)
         assert not result.success
         # 1 initial + 2 retries = 3 sends; NO delivery-failure notice (4th send)
@@ -277,14 +277,14 @@ class TestSendWithRetryFailureTypeTransitions:
             SendResult(success=False, error="Bad Request: can't parse entities"),
             # fallback send (auto-succeeds via _next_result)
         ]
-        with patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+        with patch("asyncio.sleep", new_callable=AsyncMock):
             result = await adapter._send_with_retry("chat1", "**bold**", max_retries=3, base_delay=0)
         # The formatting error was not retried further: exactly 1 retry then the
         # plain-text fallback. 1 initial + 1 retry + 1 fallback = 3 sends.
         assert len(adapter._send_calls) == 3
         # The permanent formatting error switched attempts to non-transient:
         # we fall through to (and return) the plain-text fallback.
-        assert "纯文本" in adapter._send_calls[-1][1]
+        assert "plain text" in adapter._send_calls[-1][1].lower()
         assert result.success  # fallback succeeded
         # No delivery-failure notice was sent (this is a formatting fallback, not network exhaustion)
         assert "delivery failed" not in adapter._send_calls[-1][1].lower()

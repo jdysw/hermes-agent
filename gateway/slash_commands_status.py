@@ -178,13 +178,7 @@ def _agents_delegation_lines(d: dict) -> list[str]:
     registry's progress sampler: api calls, current tool, seconds since last activity."""
     goal = _clip(" ".join(str(d.get("goal") or "").split()), 70)
     status = d.get("status", "?")
-    # 状态值是内部标识（逻辑判断仍按英文），仅显示时映射为中文。
-    _status_display = {
-        "running": "运行中", "stalling": "停滞中", "stalled": "已停滞",
-        "finalizing": "收尾中", "done": "已完成", "failed": "失败",
-        "cancelled": "已取消",
-    }.get(status, status)
-    row = f"- `{d.get('delegation_id', '?')}` · {_status_display}"
+    row = f"- `{d.get('delegation_id', '?')}` · {status}"
     quiet = d.get("stalled_after_quiet_seconds")
     if status == "stalling" and quiet is not None:
         row += t("gateway.agents.no_progress", seconds=f"{quiet:.0f}")
@@ -293,14 +287,6 @@ class GatewayStatusCommandsMixin:
             lines.append(t("gateway.status.model_provider", model=fields["model"], provider=fields["provider"]))
         elif fields["model"]:
             lines.append(t("gateway.status.model", model=fields["model"]))
-        try:
-            from hermes_cli.anon_auth import free_tier_route
-
-            free_tier_active = await self._run_in_executor_with_context(free_tier_route)
-            if free_tier_active:
-                lines.append(t("gateway.status.free_tier"))
-        except Exception:
-            pass
         from agent.context_breakdown import context_display_source
         mark = "~" if context_display_source(getattr(status_agent, "context_compressor", None)) != "provider_usage" else ""
         if context_total:

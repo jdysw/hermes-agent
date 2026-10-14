@@ -27,9 +27,9 @@ class ProcessNotificationBatch:
             return None
         if len(messages) == 1:
             return messages[0]
-        header = (f"[IMPORTANT: {len(messages)} 个后台进程已完成。"
-                  "请把这些结果合并为一批处理，只给出一份合并后的回复；"
-                  "不要遗漏失败项和需要采取行动的结果。]")
+        header = (f"[IMPORTANT: {len(messages)} background processes completed. "
+                  "Treat these results as one batch and give one consolidated response; "
+                  "preserve failures and actionable results.]")
         return "\n\n".join((header, *messages))
 
     def display_text(self, registry) -> str:
@@ -52,6 +52,23 @@ def group_process_notifications(notifications):
 
 
 
+def is_child_process_notification(evt: dict) -> bool:
+    """Raw child process noise, not a delegation or work-closeout deliverable."""
+    if evt.get("type") in {"async_delegation", "async_delegation_work_closeout"}:
+        return False
+    return str(evt.get("owner_task_id") or evt.get("task_id") or "").startswith("sa-")
+
+
+def should_surface_notification(evt: dict, *, surface_child: bool | None = None) -> bool:
+    """Shared policy; callers must first enter the event's owning profile scope."""
+    if not is_child_process_notification(evt):
+        return True
+    if surface_child is None:
+        from tools.process_registry import ProcessRegistry
+        surface_child = ProcessRegistry._surface_child_process_notifications()
+    return surface_child
+
+
 def _format_age(seconds: float) -> str:
     """Human-friendly elapsed string ('18m', '2h3m', '45s')."""
     try:
@@ -67,7 +84,7 @@ def _format_age(seconds: float) -> str:
     return f"{h}h" + (f"{m}m" if m else "")
 
 
-def _model_not_found_patterns() -> "list[str]":
+def _model_not_found_patterns() -> list[str]:
     """Model-not-found phrases from ``agent.error_classifier`` (the failover path's
     own list, so nothing drifts); a minimal built-in set if the import fails.
 
@@ -103,7 +120,7 @@ def _delegation_model_not_found(results, config) -> bool:
     return any(model in text and any(p in text for p in patterns) for text in texts)
 
 
-def _delegation_model_not_found_notice(results) -> "list[str] | None":
+def _delegation_model_not_found_notice(results) -> list[str] | None:
     """Config-level model_not_found notice lines, or None (fail-open) — once per batch."""
     config = _delegation_config()
     if not _delegation_model_not_found(results, config):
@@ -133,13 +150,13 @@ def _is_truncated(entry: dict) -> bool:
     return bool(entry.get("truncated") or entry.get("exit_reason") == "max_iterations")
 
 
-def _notice_lines(results) -> "list[str]":
+def _notice_lines(results) -> list[str]:
     """Blank + model_not_found notice block, or [] when the notice does not apply."""
     notice = _delegation_model_not_found_notice(results)
     return ["", *notice] if notice else []
 
 
-def _preamble(evt: dict, title: str, intro: str, completed_at: float, *, with_goal: bool) -> "list[str]":
+def _preamble(evt: dict, title: str, intro: str, completed_at: float, *, with_goal: bool) -> list[str]:
     """Shared preamble: title, intro, blank, dispatch time, [goal], context/toolsets, role+model."""
     lines = [title, intro, ""]
     dispatched_at = evt.get("dispatched_at")
@@ -175,7 +192,7 @@ def _format_task_failure_notice(evt: dict, deleg_id: str) -> str:
     return "\n".join(line for line in lines if line)
 
 
-def _recovery_lines(evt: dict) -> "list[str]":
+def _recovery_lines(evt: dict) -> list[str]:
     """Owner-died recovery diagnostics (``recover_abandoned_delegations``): last persisted
     status, per-task transcript paths, their verbatim tails and the owner's git state."""
     if not evt.get("last_known_status"):
@@ -381,7 +398,7 @@ class TimelineNotification(str):
                    "diagnostic" if diagnostic_process_event(event) else "result")
 
 
-def _delegation_attribution_line(evt: dict) -> "str | None":
+def _delegation_attribution_line(evt: dict) -> str | None:
     """One-line provenance for a subagent-owned process event, else None. Such a process
     outlives the child and lands in the PARENT conversation, which would otherwise see an
     anonymous output wall. Keyed on ``owner_task_id`` — ``task_id`` may be the session key."""
@@ -394,7 +411,7 @@ def _delegation_attribution_line(evt: dict) -> "str | None":
         info = get_subagent_attribution(task_id)
     if not info:
         # Registry entry aged out — still attribute generically, not anonymously.
-        return f"由子代理 {task_id} (delegate_task)."
+        return f"Started by subagent {task_id} (delegate_task)."
     goal, deleg = str(info.get("goal") or "").strip(), info.get("delegation_id")
     goal = goal[:117] + "..." if len(goal) > 120 else goal
     return (f"Started by subagent {task_id}" + (f" of delegation {deleg}" if deleg else "") + "."
@@ -404,11 +421,11 @@ def _delegation_attribution_line(evt: dict) -> "str | None":
 def _completion_status(evt: dict) -> str:
     reason = evt.get("completion_reason") or "exited"
     if reason == "killed":
-        return "被 %s 终止" % (evt.get("termination_source") or "Hermes")
-    return _REASON_STATUS.get(reason) or ("已正常结束" if evt.get("exit_code", "?") == 0 else "已退出")
+        return f"terminated by {evt.get('termination_source') or 'Hermes'}"
+    return _REASON_STATUS.get(reason) or ("completed normally" if evt.get("exit_code", "?") == 0 else "exited")
 
 
-def format_process_notification(evt: dict) -> "str | None":
+def format_process_notification(evt: dict) -> str | None:
     """Format a completion_queue event into an ``[IMPORTANT: ...]`` message."""
     evt_type = evt.get("type", "completion")
     # watch_disabled and overflow events carry their own human-readable `message`;
@@ -431,11 +448,10 @@ def format_process_notification(evt: dict) -> "str | None":
             f"{attribution}Command: {_cmd}\nOutput since last heartbeat:\n{evt.get('output', '')}]")
     if evt_type == "watch_match":
         _sup = evt.get("suppressed", 0)
-        _pat = evt.get("pattern", "?")
         return (
-            f"[IMPORTANT: 后台进程 {_sid} 命中了监视模式 {_pat!r}。\n"
-            f"{attribution}命令：{_cmd}\n命中输出：\n{evt.get('output', '')}"
-            + (f"\n（另有 {_sup} 次命中因限流被抑制）" if _sup else "") + "]")
+            f"[IMPORTANT: Background process {_sid} matched watch pattern \"{evt.get('pattern', '?')}\".\n"
+            f"{attribution}Command: {_cmd}\nMatched output:\n{evt.get('output', '')}"
+            + (f"\n({_sup} earlier matches were suppressed by rate limit)" if _sup else "") + "]")
     _exit = evt.get("exit_code", "?")
     _out = evt.get("output", "")
     _signal = ", SIGTERM" if _exit in {-15, 143, "-15", "143"} else ""
@@ -443,13 +459,13 @@ def format_process_notification(evt: dict) -> "str | None":
     # a raw wall in the parent — trim hard but keep enough tail to recognise failures.
     if _attribution and isinstance(_out, str) and len(_out) > 600:
         _out = (
-            "...(输出已裁剪 —— 该进程由子代理持有；完整输出请见"
-            "该委派任务的实时记录)\n"
+            "...(output trimmed — subagent-owned process; see the "
+            "delegation's live transcript for full output)\n"
             + _out[-600:])
     elif evt.get("output_cut"):
         # Say so where the output is the payload (a teammate's reply): a silent tail reads as whole.
         _out = (f"...(first {evt['output_cut']} characters cut — process(action=\"log\", "
                 f"session_id=\"{_sid}\") has the full output)\n{_out}")
     return (
-        f"[IMPORTANT: 后台进程 {_sid} {_completion_status(evt)}（退出码 {_exit}{_signal}）。\n"
-        f"{attribution}命令：{_cmd}\n输出：\n{_out}]")
+        f"[IMPORTANT: Background process {_sid} {_completion_status(evt)} (exit code {_exit}{_signal}).\n"
+        f"{attribution}Command: {_cmd}\nOutput:\n{_out}]")

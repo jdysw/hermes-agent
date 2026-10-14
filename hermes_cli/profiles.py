@@ -91,7 +91,6 @@ _CLONE_ALL_HISTORY_EXCLUDE_ROOT: frozenset[str] = frozenset({
 # seed_profile_skills() callers (fresh-create, `hermes update` all-profile sync, the
 # dashboard) skip bundled-skill seeding. Delete the file to opt back in.
 NO_BUNDLED_SKILLS_MARKER = ".no-bundled-skills"
-SETUP_PROFILE_MARKER = ".setup-profile.json"
 
 # Header seeded into a profile's empty .env so it owns a credentials file from day one.
 _PLACEHOLDER_ENV = (
@@ -274,7 +273,7 @@ _RESERVED_NAMES = frozenset({"hermes", "default", "test", "tmp", "root", "sudo"}
 _HERMES_SUBCOMMANDS = frozenset({
     "chat", "model", "gateway", "setup", "whatsapp", "login", "logout",
     "status", "cron", "doctor", "dump", "config", "pairing", "skills", "tools",
-    "mcp", "sessions", "insights", "version", "update", "uninstall", "profile", "plugins", "honcho", "acp",
+    "mcp", "connectors", "sessions", "insights", "version", "update", "uninstall", "profile", "plugins", "honcho", "acp",
 })
 
 
@@ -306,10 +305,17 @@ def _wrapper_path(alias: str) -> Path:
     return _get_wrapper_dir() / (f"{alias}.bat" if sys.platform == "win32" else alias)
 
 
+def _find_our_wrapper(alias: str) -> Optional[Path]:
+    """The Hermes wrapper for *alias*: :func:`_wrapper_path`, else a pre-``.bat`` bare Windows one."""
+    candidates = [_wrapper_path(alias), _get_wrapper_dir() / alias] if sys.platform == "win32" else [_wrapper_path(alias)]
+    return next((p for p in candidates if _is_our_wrapper(p)), None)
+
+
 def _is_our_wrapper(path: Path) -> bool:
-    """True when *path* reads as a Hermes-generated wrapper (contains ``hermes -p``)."""
+    """True when *path* reads as a Hermes-generated wrapper (``hermes -p`` in its head)."""
     try:
-        return "hermes -p" in path.read_text(encoding="utf-8-sig")
+        with open(path, encoding="utf-8-sig") as f:
+            return "hermes -p" in f.read(_WRAPPER_READ_LIMIT)
     except Exception:
         return False
 
@@ -450,7 +456,7 @@ def profile_exists(name: str) -> bool:
     return named_profile_is_live(profile_dir)
 
 
-def profile_matches_home(name: str, home: "Path | None" = None) -> bool:
+def profile_matches_home(name: str, home: Path | None = None) -> bool:
     """True when *name* refers to the profile served from *home* (default: current home).
 
     Lets single-profile gateways decide whether a ``/p/<profile>/`` URL prefix is
@@ -514,6 +520,7 @@ def check_alias_collision(name: str) -> Optional[str]:
         result = subprocess.run(
             ["where" if sys.platform == "win32" else "which", canon],
             capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=5,
+            check=False,
         )
         if result.returncode == 0:
             existing_path = result.stdout.strip().splitlines()[0]
@@ -540,7 +547,7 @@ def create_wrapper_script(name: str, target: Optional[str] = None) -> Optional[P
     try:
         wrapper_dir.mkdir(parents=True, exist_ok=True)
     except OSError as e:
-        print(f"⚠ 无法创建 {wrapper_dir}：{e}")
+        print(f"⚠ Could not create {wrapper_dir}: {e}")
         return None
     wrapper_path = _wrapper_path(canon)
     try:
@@ -552,7 +559,7 @@ def create_wrapper_script(name: str, target: Optional[str] = None) -> Optional[P
             wrapper_path.chmod(wrapper_path.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
         return wrapper_path
     except OSError as e:
-        print(f"⚠ 无法在 {wrapper_path} 创建包装脚本：{e}")
+        print(f"⚠ Could not create wrapper at {wrapper_path}: {e}")
         return None
 
 
@@ -565,15 +572,12 @@ def remove_wrapper_script(name: str) -> bool:
     except ValueError:
         return False
 
-    # Both the extensionless path (POSIX) and .bat (Windows)
-    candidates = [_get_wrapper_dir() / canon]
-    if sys.platform == "win32":
-        candidates.insert(0, _get_wrapper_dir() / f"{canon}.bat")
-    for wrapper_path in candidates:
-        if wrapper_path.exists() and _is_our_wrapper(wrapper_path):
-            with contextlib.suppress(Exception):
-                wrapper_path.unlink()
-                return True
+    wrapper_path = _find_our_wrapper(canon)
+    if wrapper_path is None:
+        return False
+    with contextlib.suppress(Exception):
+        wrapper_path.unlink()
+        return True
     return False
 
 
@@ -625,10 +629,8 @@ def build_alias_map() -> dict[str, str]:
     for entry in sorted(wrapper_dir.iterdir()):
         if not entry.is_file():
             continue
-        # Our wrappers are named after the alias and (on Windows only) carry .bat.
-        if is_windows and entry.suffix != ".bat":
-            continue
-        if not is_windows and entry.suffix:
+        # Our wrappers are named after the alias; Windows ones carry .bat (none before #34796).
+        if entry.suffix and not (is_windows and entry.suffix == ".bat"):
             continue
         try:
             with open(entry, "r", encoding="utf-8-sig", errors="strict") as f:
@@ -1029,9 +1031,7 @@ def _profile_info(name: str, path: Path, *, is_default: bool, alias_name: Option
     model, provider = _read_config_model(path)
     dist_name, dist_version, dist_source = _read_distribution_meta(path)
     meta = read_profile_meta(path)
-    alias_path = _wrapper_path(alias_name) if alias_name else None
-    if alias_path is not None and not alias_path.exists():
-        alias_path = None
+    alias_path = _find_our_wrapper(alias_name) if alias_name else None
     gateway_running = _check_gateway_running(path)
     if not is_default:
         gateway_running = gateway_running or _served_by_running_multiplexer(name)
@@ -1248,7 +1248,7 @@ def _junction_target(path: str) -> Optional[str]:
     # readlink hands back the substitute name; CreateJunction rejects the ``\\?\`` spelling.
     if target.startswith("\\\\?\\UNC\\"):
         return "\\" + target[7:]
-    return target[4:] if target.startswith("\\\\?\\") else target
+    return target.removeprefix("\\\\?\\")
 
 
 def _copytree_keep_junctions(src: Path, dst: Path, ignore, dirs_exist_ok: bool = False) -> None:
@@ -1436,9 +1436,6 @@ def create_profile(
             _clone_all_into(source_dir, staging, canon)
         else:
             _bootstrap_profile_dir(staging, source_dir, sync_imports=sync_imports)
-        if source_dir is not None:
-            from hermes_cli.setup_profile import release_setup_copy, setup_marker_state
-            release_setup_copy(staging, setup_state=setup_marker_state(source_dir))
         if source_dir is not None and not clone_channels:
             from hermes_cli.profile_channels import strip_channel_settings
             stripped = strip_channel_settings(staging, include_state=clone_all, source_dir=source_dir)
@@ -1544,21 +1541,22 @@ def seed_profile_skills(profile_dir: Path, quiet: bool = False) -> Optional[dict
             env={**os.environ, "HERMES_HOME": str(profile_dir)},
             cwd=str(project_root),
             capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=60,
+            check=False,
         )
         if result.returncode == 0 and result.stdout.strip():
             return json.loads(result.stdout.strip())
         if not quiet:
-            print(f"⚠ 技能初始化返回退出码 {result.returncode}")
+            print(f"⚠ Skill seeding returned exit code {result.returncode}")
             if result.stderr.strip():
                 print(f"  {result.stderr.strip()[:200]}")
         return None
     except subprocess.TimeoutExpired:
         if not quiet:
-            print("⚠ 技能初始化超时（60 秒）")
+            print("⚠ Skill seeding timed out (60s)")
         return None
     except Exception as e:
         if not quiet:
-            print(f"⚠ 技能初始化失败：{e}")
+            print(f"⚠ Skill seeding failed: {e}")
         return None
 
 
@@ -1588,7 +1586,7 @@ def backfill_profile_envs(quiet: bool = False) -> list[str]:
             backfilled.append(entry.name)
         except OSError as e:
             if not quiet:
-                print(f"⚠ 无法为 profile '{entry.name}' 初始化 .env：{e}")
+                print(f"⚠ Could not seed .env for profile '{entry.name}': {e}")
     return backfilled
 
 
@@ -1714,7 +1712,7 @@ def _stop_profile_backends(canon: str, profile_dir: Path) -> None:
         except (ProcessLookupError, PermissionError, OSError):
             continue
     _wait_then_force_kill(pids, {})
-    print(f"✓ 已停止 {len(pids)} 个 profile 后端进程")
+    print(f"✓ Stopped {len(pids)} profile backend process(es)")
 
 
 def _stop_bot_desktop(profile_dir: Path) -> None:
@@ -1784,22 +1782,22 @@ def _print_delete_summary(canon: str, profile_dir: Path, gw_running: bool, wrapp
     model, provider = _read_config_model(profile_dir)
     skill_count = _count_skills(profile_dir)
     dist_name, dist_version, dist_source = _read_distribution_meta(profile_dir)
-    print(f"\nProfile： {canon}")
-    print(f"路径：    {profile_dir}")
+    print(f"\nProfile: {canon}")
+    print(f"Path:    {profile_dir}")
     if model:
-        print(f"模型：    {model}" + (f"（{provider}）" if provider else ""))
+        print(f"Model:   {model}" + (f" ({provider})" if provider else ""))
     if skill_count:
-        print(f"技能：    {skill_count}")
+        print(f"Skills:  {skill_count}")
     if dist_name:
-        print(f"发行版： {dist_name}@{dist_version or '?'}")
+        print(f"Distribution: {dist_name}@{dist_version or '?'}")
         if dist_source:
-            print(f"安装来源： {dist_source}")
-    print("\n这将永久删除：")
-    print("  • 全部配置、API 密钥、记忆、会话、技能、定时任务")
+            print(f"Installed from: {dist_source}")
+    print("\nThis will permanently delete:")
+    print("  • All config, API keys, memories, sessions, skills, cron jobs")
     if wrapper_path is not None:
-        print(f"  • 命令别名（{wrapper_path}）")
+        print(f"  • Command alias ({wrapper_path})")
     if gw_running:
-        print("  ⚠ 网关正在运行 —— 它将被停止。")
+        print("  ⚠ Gateway is running — it will be stopped.")
 
 
 class ProfileIdentitySettlementPending(RuntimeError):
@@ -1829,9 +1827,8 @@ def delete_profile(name: str, yes: bool = False) -> Path:
         raise ValueError("Cannot delete the default profile (~/.hermes).\nTo remove everything, use: hermes uninstall")
     canon, profile_dir = _existing_profile_dir(canon)
     gw_running = _check_gateway_running(profile_dir)
-    wrapper_path = _get_wrapper_dir() / canon
-    has_wrapper = wrapper_path.exists()
-    _print_delete_summary(canon, profile_dir, gw_running, wrapper_path if has_wrapper else None)
+    wrapper_path = _find_our_wrapper(canon)
+    _print_delete_summary(canon, profile_dir, gw_running, wrapper_path)
     if not yes:
         print()
         try:
@@ -1840,7 +1837,7 @@ def delete_profile(name: str, yes: bool = False) -> Path:
             confirm = None
             print()
         if confirm != canon:
-            print("已取消。")
+            print("Cancelled.")
             return profile_dir
 
     # 1. Disable service (prevents auto-restart); drop the s6 slot on container (host no-op).
@@ -1896,23 +1893,23 @@ def delete_profile(name: str, yes: bool = False) -> Path:
             print(f"✓ Released {_released_logs} profile log handler(s) held by this process")
 
     # 3. Remove wrapper script
-    if has_wrapper and remove_wrapper_script(canon):
+    if wrapper_path and remove_wrapper_script(canon):
         print(f"✓ Removed {wrapper_path}")
 
     # 4. Remove profile directory
     remove_error: Exception | None = None
     try:
         _rmtree_with_retry(profile_dir, _rmtree_make_writable)
-        print(f"✓ 已移除 {profile_dir}")
+        print(f"✓ Removed {profile_dir}")
     except Exception as e:
-        print(f"⚠ 无法移除 {profile_dir}：{e}")
+        print(f"⚠ Could not remove {profile_dir}: {e}")
         remove_error = e
 
     # 5. Clear active_profile if it pointed to this profile
     _retarget_active_profile(canon, "default", "✓ Active profile reset to default")
     if remove_error is not None:
         raise RuntimeError(f"Could not remove profile directory {profile_dir}: {remove_error}") from remove_error
-    print(f"\nProfile '{canon}' 已删除。")
+    print(f"\nProfile '{canon}' deleted.")
     if not identity_settled:
         # Filesystem work and runtime teardown are done; the durable identity is not. Report the
         # partial settlement as a typed failure (still a RuntimeError for the CLI's handler)
@@ -1954,7 +1951,7 @@ def _maybe_register_gateway_service(profile_name: str) -> None:
     except ValueError:
         pass  # already registered (e.g. the container-boot reconciler brought up a stale slot)
     except Exception as exc:
-        print(f"⚠ 无法注册 s6 网关服务：{exc}")
+        print(f"⚠ Could not register s6 gateway service: {exc}")
 
 
 def _maybe_unregister_gateway_service(profile_name: str) -> None:
@@ -1965,7 +1962,7 @@ def _maybe_unregister_gateway_service(profile_name: str) -> None:
     try:
         mgr.unregister_profile_gateway(profile_name)
     except Exception as exc:
-        print(f"⚠ 无法注销 s6 网关服务：{exc}")
+        print(f"⚠ Could not unregister s6 gateway service: {exc}")
 
 
 def _cleanup_gateway_service(name: str, profile_dir: Path) -> bool:
@@ -1997,7 +1994,7 @@ def _cleanup_gateway_service(name: str, profile_dir: Path) -> bool:
                 _run("systemctl", "--user", "stop", svc_name)
                 svc_file.unlink(missing_ok=True)
                 _run("systemctl", "--user", "daemon-reload")
-                print(f"✓ 已移除服务 {svc_name}")
+                print(f"✓ Service {svc_name} removed")
                 removed = True
             # `gateway install --system` writes the same name under /etc; a survivor there
             # restarts the removed profile at boot exactly like the user unit at login.
@@ -2007,13 +2004,13 @@ def _cleanup_gateway_service(name: str, profile_dir: Path) -> bool:
             if plist_path.exists():
                 _run("launchctl", "unload", str(plist_path))
                 plist_path.unlink(missing_ok=True)
-                print("✓ 已移除 Launchd 服务")
+                print("✓ Launchd service removed")
                 removed = True
         elif system == "Windows":
             removed = remove_windows_task()
         return removed
     except Exception as e:
-        print(f"⚠ 服务清理：{e}")
+        print(f"⚠ Service cleanup: {e}")
     finally:
         reset_hermes_home_override(home_token)
         os.environ.pop("HERMES_HOME", None)
@@ -2037,9 +2034,9 @@ def _stop_gateway_process(profile_dir: Path) -> None:
         from gateway.status import get_process_start_time, recorded_gateway_home_conflicts, terminate_pid
         if recorded_gateway_home_conflicts(data, expected_home=profile_dir):
             print(
-                f"✗ 拒绝停止 PID {pid}：它记录的 HERMES_HOME "
-                f"属于与 {profile_dir} 不同的 profile "
-                "（PID 记录过期或被污染，#89315）。"
+                f"✗ Refusing to stop PID {pid}: its recorded HERMES_HOME "
+                f"belongs to a different profile than {profile_dir} "
+                "(stale/poisoned PID record, #89315)."
             )
             return
         # terminate_pid picks the Windows primitive (taskkill /T cascades to children; raw
@@ -2049,13 +2046,13 @@ def _stop_gateway_process(profile_dir: Path) -> None:
             expected_start_time = get_process_start_time(pid)
         terminate_pid(pid)  # graceful first
         if _wait_then_force_kill([pid], {pid: expected_start_time}):
-            print(f"✓ 已停止网关（PID {pid}）")
+            print(f"✓ Gateway stopped (PID {pid})")
         else:
-            print(f"✓ 已强制停止网关（PID {pid}）")
+            print(f"✓ Gateway force-stopped (PID {pid})")
     except (ProcessLookupError, PermissionError):
-        print("✓ 网关已停止")
+        print("✓ Gateway already stopped")
     except Exception as e:
-        print(f"⚠ 无法停止网关：{e}")
+        print(f"⚠ Could not stop gateway: {e}")
 
 
 # Active profile (sticky default)
@@ -2361,8 +2358,6 @@ def import_profile(archive_path: str, name: Optional[str] = None) -> Path:
                     shutil.rmtree(child)
                 else:
                     child.unlink()
-        from hermes_cli.setup_profile import release_setup_copy, setup_marker_state
-        release_setup_copy(final_source, setup_state=setup_marker_state(final_source))
         shutil.move(str(final_source), str(profile_dir))
     return profile_dir
 
@@ -2407,14 +2402,14 @@ def _migrate_honcho_profile_host(old_name: str, new_name: str, new_dir: Path) ->
         if source_host not in hosts:
             continue
         if new_host in hosts:
-            print(f"⚠ Honcho 主机段未迁移：{new_host} 已存在于 {path}")
+            print(f"⚠ Honcho host block not migrated: {new_host} already exists in {path}")
             continue
         block = hosts[source_host]
         if isinstance(block, dict) and "aiPeer" not in block:
             block["aiPeer"] = old_name  # source_host is ``hermes_<old>`` or legacy ``hermes.<old>``
         hosts[new_host] = hosts.pop(source_host)
         if _atomic_write_json(path, raw):
-            print(f"✓ Honcho 主机已更新：{source_host} → {new_host}")
+            print(f"✓ Honcho host updated: {source_host} → {new_host}")
 
 
 def _record_profile_rename(new_dir: Path, old_canon: str) -> None:
@@ -2441,7 +2436,7 @@ def rename_profile(old_name: str, new_name: str) -> Path:
         if not (new_name or "").strip():
             raise ValueError("Display name cannot be empty.")
         cleaned = set_profile_display_name("default", new_name)
-        print(f"✓ 显示名称已设置：{cleaned}（规范 id 仍为 'default'）")
+        print(f"✓ Display name set: {cleaned} (canonical id remains 'default')")
         return _get_default_hermes_home()
     new_canon = _canon_valid(new_name)
     if new_canon == "default":
@@ -2494,7 +2489,7 @@ def rename_profile(old_name: str, new_name: str) -> Path:
         if service_removed:
             print(f"⚠ The gateway service was removed. Reinstall it with: hermes -p {old_canon} gateway install")
         raise
-    print(f"✓ 已重命名 {old_dir.name} → {new_dir.name}")
+    print(f"✓ Renamed {old_dir.name} → {new_dir.name}")
     # The tombstone lives at profiles/.deleted/<old_name>; old_dir is gone so nothing can
     # resurrect it, and a future profile reusing the old name must not read as deleted.
     if live_mux:
@@ -2513,9 +2508,9 @@ def rename_profile(old_name: str, new_name: str) -> Path:
     collision = check_alias_collision(new_canon)
     if not collision:
         create_wrapper_script(new_canon)
-        print(f"✓ 别名已更新：{new_canon}")
+        print(f"✓ Alias updated: {new_canon}")
     else:
-        print(f"⚠ 无法创建别名 '{new_canon}' —— {collision}")
+        print(f"⚠ Cannot create alias '{new_canon}' — {collision}")
 
     # 5. Update active_profile if it pointed to old name
     _retarget_active_profile(old_canon, new_canon, f"✓ Active profile updated: {new_canon}")

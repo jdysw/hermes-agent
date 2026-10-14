@@ -718,16 +718,16 @@ class AmbiguousAliasError(Exception):
         super().__init__(f"alias {alias!r} matches {len(candidates)} models on {provider}")
 
 
-def _ambiguous_alias_message(err: "AmbiguousAliasError") -> str:
+def _ambiguous_alias_message(err: AmbiguousAliasError) -> str:
     """User-facing disambiguation list for an ambiguous alias."""
     shown = err.candidates[:10]
     lines = "\n".join(f"  {i}. {m}" for i, m in enumerate(shown, 1))
     hidden = len(err.candidates) - len(shown)
     more = f"\n  … and {hidden} more" if hidden > 0 else ""
     return (
-        f"'{err.alias}' 在 {err.provider} 上匹配到 {len(err.candidates)} 个模型"
-         f" —— 不会自动切换：\n{lines}{more}\n"
-         f"请用 /model <完整模型名> 指定其中一个。")
+        f"'{err.alias}' matches {len(err.candidates)} models on "
+        f"{err.provider} — not switching automatically:\n{lines}{more}\n"
+        f"Pick one with /model <exact-model-name>.")
 
 
 def _provider_identity(name: str, user_providers: Optional[dict] = None,
@@ -981,7 +981,7 @@ def _duplicates_configured_row(
                  if identity == row or (provider_key == row_slug.lower() and identity[1:3] == row[1:3])), None)
 
 
-def _current_provider_match(st: "_Switch", cfg_matches: dict[str, str]) -> Optional[str]:
+def _current_provider_match(st: _Switch, cfg_matches: dict[str, str]) -> Optional[str]:
     """The slug in *cfg_matches* the session already runs on: an exact hit, or — for a session on
     the compat projection slug (``custom:relay``) of ``providers.relay`` — that row's slug, so a
     same-provider switch keeps the caller's slug instead of flipping it (#112788)."""
@@ -1042,13 +1042,13 @@ def _ollama_configured_base() -> tuple[dict, str]:
 
 def _unknown_provider_message(explicit_provider: str) -> str:
     msg = (
-        f"未知的提供方 '{explicit_provider}'。用 'hermes model' 查看可用提供方，"
-         f"或在 config.yaml 的 'providers:' 下定义它。")
+        f"Unknown provider '{explicit_provider}'. Check 'hermes model' for available "
+        f"providers, or define it in config.yaml under 'providers:'.")
     try:  # Surface common config issues that cause provider resolution failures
         from hermes_cli.config import validate_config_structure
         issues = validate_config_structure()
         if issues:
-            msg += "\n\n运行 'hermes doctor' —— 检测到配置问题：" + "".join(f"\n  • {ci.message}" for ci in issues[:3])
+            msg += "\n\nRun 'hermes doctor' — config issues detected:" + "".join(f"\n  • {ci.message}" for ci in issues[:3])
     except Exception:
         pass
     return msg
@@ -1073,10 +1073,11 @@ def _aggregator_alias_error(
     if target_provider in authed:
         return ""
     suggestions = [s for s in authed if s.startswith(explicit_norm) and s != explicit_norm]
-    hint = f" 你是不是想用：{', '.join(suggestions)}？" if suggestions else ""
+    hint = f" Did you mean: {', '.join(suggestions)}?" if suggestions else ""
     return (
-        f"提供方 '{explicit_norm}' 是一个别名，实际经由 {get_label(target_provider)}，"
-         f"而它没有配置凭据。{hint}")
+        f"Provider '{explicit_norm}' is an alias that routes "
+        f"through {get_label(target_provider)}, which "
+        f"has no credentials configured.{hint}")
 
 
 def _aggregator_catalog_match(new_model: str, catalog: list) -> str | None:
@@ -1104,7 +1105,7 @@ def _config_declares_model(
     return False
 
 
-def _apply_direct_alias_endpoint(st: "_Switch", da: DirectAlias) -> None:
+def _apply_direct_alias_endpoint(st: _Switch, da: DirectAlias) -> None:
     """Route a direct alias to its own base_url and decide its credential (mutates ``st``).
 
     Credentials were resolved against the DEFAULT provider; carrying that key onto the alias
@@ -1231,14 +1232,14 @@ def _route_explicit_provider(st: _Switch) -> Optional[ModelSwitchResult]:
     if not st.new_model:
         if not pdef.base_url:
             return st.fail_on_target(
-                f"提供方 '{pdef.name}' 没有配置 base URL。"
-                 f"请显式指定模型：/model <模型名> --provider {st.explicit_provider}")
+                f"Provider '{pdef.name}' has no base URL configured. "
+                f"Specify a model: /model <model-name> --provider {st.explicit_provider}")
         from hermes_cli.runtime_provider import _auto_detect_local_model
         st.new_model = _auto_detect_local_model(pdef.base_url)
         if not st.new_model:
             return st.fail_on_target(
-                f"未在 {pdef.name}（{pdef.base_url}）上探测到模型。"
-                 f"请显式指定模型：/model <模型名> --provider {st.explicit_provider}")
+                f"No model detected on {pdef.name} ({pdef.base_url}). "
+                f"Specify the model explicitly: /model <model-name> --provider {st.explicit_provider}")
 
     try:
         alias_result = resolve_alias(st.new_model, st.target_provider, st.user_providers, st.custom_providers)
@@ -1267,9 +1268,9 @@ def _route_alias_fallback(st: _Switch, key: str) -> Optional[ModelSwitchResult]:
     if fallback_result is None:
         identity = MODEL_ALIASES[key]
         return st.fail(
-            f"别名 '{key}' 指向 {identity.vendor}/{identity.family}，"
-             f"但在所有提供方目录中都没有找到匹配的模型。"
-             f"请尝试指定完整的模型名。")
+            f"Alias '{key}' maps to {identity.vendor}/{identity.family} "
+            f"but no matching model was found in any provider catalog. "
+            f"Try specifying the full model name.")
     st.target_provider, st.new_model, st.resolved_alias = fallback_result
     logger.debug(
         "Alias '%s' resolved via fallback to %s on %s", st.resolved_alias, st.new_model, st.target_provider)

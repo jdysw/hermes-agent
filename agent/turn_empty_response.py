@@ -76,7 +76,7 @@ def _retry_empty(
         if budget < _empty_guard.DEFAULT_EMPTY_RETRY_BUDGET else ""
     )
     agent._buffer_diagnostic_status(
-        f"⚠️ 模型返回空响应 —— {wait_time:.0f}s 后重试（{n}/{budget}）{_budget_note}"
+        f"⚠️ Empty response from model — retrying ({n}/{budget}) in {wait_time:.0f}s{_budget_note}"
     )
     _interrupted = interruptible_backoff_sleep(
         agent, wait_time, None,
@@ -101,7 +101,8 @@ def _terminal_empty(agent: Any, assistant_message: Any, finish_reason: str, mess
     _streak_cost = _empty_guard.streak_cost_usd(agent)
     if _streak_cost is not None:
         agent._buffer_diagnostic_status(
-            f"ℹ️ 这些空响应尝试的预估费用：约 ${_streak_cost:.2f}（即使没有产出回答，输入 token 也按次计费）"
+            f"ℹ️ Estimated cost of these empty attempts: ~${_streak_cost:.2f} (input tokens are billed "
+            f"per attempt even when no answer is produced)"
         )
     agent._flush_status_buffer()
     reasoning_text = agent._extract_reasoning(assistant_message)
@@ -119,7 +120,7 @@ def _terminal_empty(agent: Any, assistant_message: Any, finish_reason: str, mess
             agent.provider,
         )
         agent._emit_diagnostic_status(
-            "❌ 模型在所有重试后仍未返回任何内容"
+            "❌ Model returned no content after all retries"
             + (" and fallback attempts." if agent._fallback_chain else
                ". No fallback providers configured.")
         )
@@ -131,7 +132,7 @@ def _terminal_empty(agent: Any, assistant_message: Any, finish_reason: str, mess
         agent._empty_content_retries, agent.model, agent.provider,
     )
     agent._emit_diagnostic_status(
-        "⚠️ 模型在所有重试后只产生了推理内容、没有可见回复。将返回空结果。"
+        "⚠️ Model produced reasoning but no visible response after all retries. Returning empty."
     )
     return "(empty)"
 
@@ -168,7 +169,7 @@ def recover_empty_response(
             "Partial stream content delivered (%d chars) — using as final response",
             len(_recovered),
         )
-        agent._emit_diagnostic_status("↻ 流式响应中断 —— 改用已送达的内容作为最终回复")
+        agent._emit_diagnostic_status("↻ Stream interrupted — using delivered content " "as final response")
         final_response = _recovered
         # A streamed fragment isn't a confirmed preview: gateway fallback delivery
         # sends the text plus the abnormal-turn explanation.
@@ -182,7 +183,7 @@ def recover_empty_response(
     if fallback and getattr(agent, '_last_content_tools_all_housekeeping', False):
         _turn_exit_reason = "fallback_prior_turn_content"
         logger.info("Empty follow-up after tool calls — using prior turn content as final response")
-        agent._emit_diagnostic_status("↻ 工具调用后返回空响应 —— 改用先前的内容作为最终答案")
+        agent._emit_diagnostic_status("↻ Empty response after tool calls — using earlier content as final answer")
         agent._last_content_with_tools = None
         agent._last_content_tools_all_housekeeping = False
         agent._empty_content_retries = 0
@@ -209,7 +210,7 @@ def recover_empty_response(
         agent._last_content_with_tools = None
         agent._last_content_tools_all_housekeeping = False
         logger.info("Empty response after tool calls — nudging model " "to continue processing")
-        agent._buffer_diagnostic_status("⚠️ 模型在工具调用后返回空内容 —— 提醒它继续")
+        agent._buffer_diagnostic_status("⚠️ Model returned empty after tool calls — " "nudging to continue")
         # tool → assistant("(empty)") → user keeps the sequence valid.
         _nudge_msg = agent._build_assistant_message(assistant_message, finish_reason)
         _nudge_msg["content"] = "(empty)"
@@ -235,7 +236,7 @@ def recover_empty_response(
             agent._thinking_prefill_retries,
         )
         agent._buffer_diagnostic_status(
-            f"↻ 仅返回思考内容 —— 预填充以继续（{agent._thinking_prefill_retries}/2）"
+            f"↻ Thinking-only response — prefilling to continue ({agent._thinking_prefill_retries}/2)"
         )
         interim_msg = agent._build_assistant_message(assistant_message, "incomplete")
         interim_msg["_thinking_prefill"] = True
@@ -262,7 +263,8 @@ def recover_empty_response(
             agent.model, agent.provider, finish_reason,
         )
         agent._buffer_diagnostic_status(
-            "⚠️ 模型反复返回空内容 —— 跳过后续重试，避免重复计费"
+            "⚠️ Model is repeatedly returning empty content — skipping further retries "
+            "to avoid repeat charges"
         )
 
     # Exhausted retries — try the next provider in the chain before "(empty)".
@@ -271,11 +273,11 @@ def recover_empty_response(
             "Empty response after %d retries — attempting fallback (model=%s, provider=%s)",
             agent._empty_content_retries, agent.model, agent.provider,
         )
-        agent._buffer_diagnostic_status("⚠️ 模型持续返回空响应 —— 正在切换到备用提供方...")
+        agent._buffer_diagnostic_status("⚠️ Model returning empty responses — " "switching to fallback provider...")
         if agent._try_activate_fallback():
             active_system_prompt = _sync_failover_system_message(agent, api_messages, active_system_prompt)
             agent._empty_content_retries = 0
-            agent._buffer_diagnostic_status(f"↻ 已切换到备用：{agent.model}（{agent.provider}）")
+            agent._buffer_diagnostic_status(f"↻ Switched to fallback: {agent.model} " f"({agent.provider})")
             logger.info(
                 "Fallback activated after empty responses: now using %s on %s",
                 agent.model, agent.provider,

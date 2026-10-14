@@ -36,11 +36,6 @@ from tools.approval_floors import (
     _user_deny_block_result,
 )
 from tools.approval_gateway_wait import _await_gateway_decision
-from tools.approval_i18n_zh import (
-    localize_approval_text as _localize,
-    localize_pattern_key as _localize_pattern_key,
-    tirith_rule_name,
-)
 from tools.approval_prompt import _present_with_selected_transport, _transport_choice, prompt_dangerous_approval
 from tools.approval_smart import _smart_verdict
 
@@ -802,7 +797,7 @@ def _human_decision(spec: _GateSpec, *, command: str, description: str,
             breaker = _denial_breaker_addendum(session_key)
         deny_reason = fmt.pop("deny_reason", None)
         extra = {"deny_reason": deny_reason} if "reason" in fmt else {}
-        return _denied(template.format(description=_localize(description), breaker=breaker, **fmt),
+        return _denied(template.format(description=description, breaker=breaker, **fmt),
                        pattern_key=pattern_key, description=description,
                        outcome=outcome, noun=spec.noun, **extra)
 
@@ -835,7 +830,7 @@ def _human_decision(spec: _GateSpec, *, command: str, description: str,
         # Redacted copies for user-visible rendering only (the gateway paints them into Discord/Slack); the raw
         # command still executes after approval and persistence keys off pattern_key.
         display_command = redact_sensitive_text(command)
-        display_description = _localize(redact_sensitive_text(description))
+        display_description = redact_sensitive_text(description)
         notify_cb = _gateway_notify_cb(session_key)
         if notify_cb is not None:
             # Smart DENY overrides are one-operation decisions, so the UI must not offer a
@@ -879,7 +874,7 @@ def _human_decision(spec: _GateSpec, *, command: str, description: str,
             is_cli=is_cli, approval_callback=approval_callback, notify_cb=notify_cb,
         ):
             if not spec.pending_keys:
-                display_command, display_description = command, _localize(description)
+                display_command, display_description = command, description
             return _pending_result(
                 spec, session_key, command=display_command, description=display_description, pattern_key=pattern_key,
                 pattern_keys=pattern_keys, body=pending_body, smart_denied=smart_denied,
@@ -889,7 +884,7 @@ def _human_decision(spec: _GateSpec, *, command: str, description: str,
     prompt_command, prompt_description = command, description
     if spec.redact_cli:
         prompt_command = redact_sensitive_text(command)
-        prompt_description = _localize(redact_sensitive_text(description))
+        prompt_description = redact_sensitive_text(description)
     hook_kwargs = dict(command=prompt_command, description=prompt_description, pattern_key=pattern_key,
                        pattern_keys=list(pattern_keys), session_key=session_key, surface="cli")
     approval_context._fire_approval_hook("pre_approval_request", **hook_kwargs)

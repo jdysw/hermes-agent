@@ -76,7 +76,7 @@ async def test_agents_command_marks_stalling_delegation(monkeypatch):
         gate.set()
 
     assert res["delegation_id"] in out
-    assert "停滞中" in out
-    assert "无进展" in out
+    assert "stalling" in out
+    assert "no progress" in out
 
 
