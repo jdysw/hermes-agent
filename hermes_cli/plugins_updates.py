@@ -160,7 +160,39 @@ def check_provenanced(
         result.update_available = result.current != entry.sha
         return result
     result = check_local_provenance(prov)
-    if result.reason or result.needs_fixing:
+    if result.needs_fixing:
+        return result
+    if result.reason and prov.klass is ProvenanceClass.DRIFT:
+        # No-.git subdirectory installs: compare the recorded source by
+        # ls-remote, mirroring the git-row path so the cadence auto-apply
+        # can track them through the shared update pipeline (re-clone).
+        row = prov.row or {}
+        source = str(row.get("source") or "")
+        probe = source.split("#", 1)[0].strip()
+        result.current = row.get("revision") or None
+        if row.get("pinned") is True:
+            result.update_available = False
+            result.reason = f"pinned @ {(result.current or '')[:12] or 'sha'}"
+            return result
+        if not probe:
+            result.reason = "provenance drift — no recorded source; reinstall required"
+            return result
+        try:
+            head = ls_remote(probe)
+        except Exception as exc:
+            result.reason = f"ls-remote failed: {exc}"
+            return result
+        if not head:
+            result.reason = "ls-remote returned no head for the recorded source"
+            return result
+        result.latest = head
+        if not result.current or not _FULL_GIT_SHA_RE.fullmatch(str(result.current)):
+            result.reason = "remote head found but the install records no full revision sha to compare"
+            return result
+        result.update_available = head.lower() != str(result.current).lower()
+        result.reason = ""
+        return result
+    if result.reason:
         return result
     row = prov.row or {}
     saved = row.get("update_url") or None

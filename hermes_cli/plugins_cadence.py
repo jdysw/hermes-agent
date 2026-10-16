@@ -178,12 +178,13 @@ def _run_check_locked(
             names,
         )
 
-    # Opt-in unattended apply: git rows ONLY, scan-gated by the update
-    # path itself. Pinned/manual/drift/pip are never auto-applied
-    # (their update_available is False/None or their class excludes it).
+    # Opt-in unattended apply: git/catalog/drift rows (each has a
+    # shared-pipeline update path: pull / re-pin / re-clone), scan-gated
+    # by the update path itself. Manual/pip are never auto-applied;
+    # pinned rows refuse inside the update path (fail closed).
     if apply_updates_fn and updates and auto_apply_enabled(config_get):
         for r in updates:
-            if getattr(r, "klass", "") == "git":
+            if getattr(r, "klass", "") in ("git", "catalog", "drift"):
                 try:
                     apply_updates_fn(r.name)
                 except (Exception, SystemExit):
