@@ -16,11 +16,12 @@ from hermes_state_holders import read_only_db_uri
 
 def _doctor_memory_config(hermes_home: Path | None = None) -> dict:
     """Return the effective memory section used by doctor diagnostics."""
+    from hermes_cli.config_backend import config_exists
     from hermes_cli.doctor import HERMES_HOME
     try:
         from hermes_cli.config_effective import load_user_config_effective
         config_path = (hermes_home if hermes_home is not None else HERMES_HOME) / "config.yaml"
-        if not config_path.exists():
+        if not config_exists(config_path):
             return {}
         section = load_user_config_effective(config_path).get("memory")
         return section if isinstance(section, dict) else {}
@@ -395,6 +396,9 @@ def _state_db_health(f: Finding, should_fix: bool, state_db_path: Path, _DHH: st
         _write_reason = _write_health_reason(state_db_path, should_fix=should_fix)
     except Exception as e:
         return _classify_unreadable_state_db(f, should_fix, state_db_path, _DHH, e)
+    from hermes_state_repair import HealthCheckUnavailable
+    if isinstance(_write_reason, HealthCheckUnavailable):
+        return check_warn(f"{_DHH}/state.db write-health probe could not run", f"({_write_reason})")
     if _write_reason is not None:
         if _report_structural_damage(f, should_fix, state_db_path, _DHH, _write_reason):
             return
@@ -680,6 +684,7 @@ def _check_plugins_in_both_lists(should_fix: bool, f: Finding) -> None:
 @doctor_check("")  # best-effort: profile enumeration must never break doctor
 def _check_profiles(should_fix: bool, f: Finding) -> None:
     from hermes_constants import PROFILE_ID_RE
+    from hermes_cli.config_backend import config_exists
     from hermes_cli.profiles import _wrapper_path, list_profiles, _get_wrapper_dir, profile_exists
     import re as _re
     named_profiles = [p for p in list_profiles() if not p.is_default]
@@ -691,7 +696,7 @@ def _check_profiles(should_fix: bool, f: Finding) -> None:
     for p in named_profiles:
         parts = [text for cond, text in (
             (p.gateway_running, "gateway running"), (p.model, (p.model or "")[:30]),
-            (not (p.path / "config.yaml").exists(), "⚠ missing config"), (not (p.path / ".env").exists(), "no .env"),
+            (not config_exists(p.path / "config.yaml"), "⚠ missing config"), (not (p.path / ".env").exists(), "no .env"),
             (p.alias_path is None, "no alias")) if cond]
         check_ok(f"  {p.name}: {', '.join(parts) if parts else 'configured'}")
     # Orphan wrappers

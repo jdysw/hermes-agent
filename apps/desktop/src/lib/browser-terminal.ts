@@ -1,4 +1,4 @@
-import { isGatewayReauthRequired, isStableOpen, reconnectBackoffDelayMs } from '@hermes/shared'
+import { isGatewayReauthRequired, isStableOpen, LOCAL_CONNECTION_ID, reconnectBackoffDelayMs } from '@hermes/shared'
 
 import type { HermesTerminalExit, HermesTerminalSession, HermesTerminalState } from '@/global'
 
@@ -10,13 +10,17 @@ type DataListener = Parameters<TerminalApi['onData']>[1]
 interface SavedTerminal {
   terminalId: string
   profile: string | null
+  /** The gateway the shell runs on. Saved before relayed gateways existed: the serving one. */
+  connectionId?: string
 }
 
 interface BrowserTerminalOptions {
   basePath: string
   currentProfile: () => string | null
-  websocketUrl: (profile: string | null) => Promise<string>
-  defaultCwd: (profile: string | null) => Promise<string>
+  /** The gateway a new terminal starts on; the terminal keeps it for every later dial. */
+  currentConnection: () => string
+  websocketUrl: (profile: string | null, connectionId: string) => Promise<string>
+  defaultCwd: (profile: string | null, connectionId: string) => Promise<string>
   /** The tab's sign-in ended (a 4401 close or a 401 ticket): show the sign-in view. */
   onSignedOut?: () => void
 }
@@ -25,6 +29,7 @@ interface TerminalState {
   id: string
   restoreKey?: string
   profile: string | null
+  connectionId: string
   terminalId?: string
   cwd: string
   shell: string
@@ -47,6 +52,11 @@ interface TerminalState {
 }
 
 const META = '\u0000HERMES_TERMINAL_META:'
+// 4410 also ends a shell the server closed (expiry, a deleted profile, shutdown); only a shell
+// that exited by itself (`exit`, Ctrl-D) carries this reason (pty_session.WS_CLOSE_PROCESS_EXITED_REASON).
+const PROCESS_EXITED_REASON = 'Process exited'
+// The signal of a dial refused that way (the shell exited while no tab was attached): a process exit.
+const EXITED = 'exited'
 const MAX_RETRIES = 5
 const RETRY_BACKOFF = { baseDelayMs: 500, capMs: 8000 }
 const START_TIMEOUT = 10_000
@@ -68,8 +78,16 @@ function settleOpen(state: TerminalState): void {
   state.openedAt = null
 }
 
+/** A trimmed replay can start mid-way through a full-screen program's output, and an
+ * unchanged size sends no SIGWINCH: step one row away first so the program redraws. The server
+ * holds the step back until the program has answered the step (web_host_terminal_sessions._resize). */
+function sendResumeSize(socket: WebSocket, state: TerminalState, trimmed?: boolean): void {
+  if (trimmed) {socket.send(`\u001b[RESIZE:${state.cols};${state.rows > 1 ? state.rows - 1 : state.rows + 1}]`)}
+  socket.send(`\u001b[RESIZE:${state.cols};${state.rows}]`)
+}
+
 async function closeSavedShell(saved: SavedTerminal, websocketUrl: BrowserTerminalOptions['websocketUrl']): Promise<boolean> {
-  const url = new URL(await websocketUrl(saved.profile))
+  const url = new URL(await websocketUrl(saved.profile, saved.connectionId ?? LOCAL_CONNECTION_ID))
   url.searchParams.set('attach', saved.terminalId)
   url.searchParams.set('action', 'close')
   const socket = new WebSocket(url)
@@ -124,7 +142,7 @@ async function dialTerminal(state: TerminalState, context: DialContext): Promise
   const { stopSocket, emitData, setStatus, forget, finish, reconnect } = context
   stopSocket(state)
   const generation = ++state.generation
-  const url = new URL(await context.websocketUrl(state.profile))
+  const url = new URL(await context.websocketUrl(state.profile, state.connectionId))
 
   if (generation !== state.generation || context.isPaused() || state.stopped) {
     throw new TerminalConnectionError('Terminal attachment cancelled')
@@ -197,7 +215,11 @@ async function dialTerminal(state: TerminalState, context: DialContext): Promise
             replayNext = true
 
             if (state.restoreKey) {
-              writeJson(context.storageKey(state.restoreKey), { terminalId: state.terminalId, profile: state.profile })
+              writeJson(context.storageKey(state.restoreKey), {
+                terminalId: state.terminalId,
+                profile: state.profile,
+                connectionId: state.connectionId
+              })
             }
 
             if (resuming) {
@@ -210,7 +232,7 @@ async function dialTerminal(state: TerminalState, context: DialContext): Promise
           handshakeComplete = true
 
           // Resume query dimensions do not resize an existing server PTY.
-          if (resuming) {socket.send(`\u001b[RESIZE:${state.cols};${state.rows}]`)}
+          if (resuming) {sendResumeSize(socket, state, meta.truncated)}
           setStatus(state, 'open')
           state.openedAt = Date.now()
 
@@ -247,11 +269,12 @@ async function dialTerminal(state: TerminalState, context: DialContext): Promise
       if (!current()) {return}
       settleOpen(state)
       const signal = CLOSE_SIGNALS[event.code] ?? 'disconnected'
+      const exited = event.code === 4410 && event.reason === PROCESS_EXITED_REASON
 
       if (signal === 'expired') {forget(state)}
 
       if (!handshakeComplete) {
-        fail(new TerminalConnectionError(event.reason || `Host terminal closed (${event.code})`, signal))
+        fail(new TerminalConnectionError(event.reason || `Host terminal closed (${event.code})`, exited ? EXITED : signal))
 
         return
       }
@@ -260,6 +283,9 @@ async function dialTerminal(state: TerminalState, context: DialContext): Promise
 
       if (!state.terminalId) {
         finish(state, event.code === 4410 ? null : 'disconnected')
+      } else if (exited) {
+        // The shell ended: report a process exit, which closes the tab as in native Desktop.
+        finish(state, null)
       } else if (signal !== 'disconnected') {
         finish(state, signal)
       } else {
@@ -280,7 +306,8 @@ export function createBrowserTerminal(options: BrowserTerminalOptions): Terminal
     const saved = key ? readJson<SavedTerminal>(storageKey(key)) : null
 
     return saved && typeof saved.terminalId === 'string' && saved.terminalId.length > 0 &&
-      (saved.profile === null || typeof saved.profile === 'string') ? saved : null
+      (saved.profile === null || typeof saved.profile === 'string') &&
+      (saved.connectionId === undefined || typeof saved.connectionId === 'string') ? saved : null
   }
 
   const forget = (state: Pick<TerminalState, 'restoreKey'> & { terminalId?: string }) => {
@@ -360,6 +387,8 @@ export function createBrowserTerminal(options: BrowserTerminalOptions): Terminal
         // A 401 from the ticket route: signed out, and every further attempt would be refused.
         if (isGatewayReauthRequired(error)) {
           finish(state, 'signed-out')
+        } else if (error instanceof TerminalConnectionError && error.signal === EXITED) {
+          finish(state, null)
         } else if (error instanceof TerminalConnectionError && error.signal !== 'disconnected') {
           finish(state, error.signal)
         } else {
@@ -394,7 +423,12 @@ export function createBrowserTerminal(options: BrowserTerminalOptions): Terminal
     stopSocket(state)
 
     try {
-      if (state.terminalId) {await closeSavedShell({ terminalId: state.terminalId, profile: state.profile }, options.websocketUrl)}
+      if (state.terminalId) {
+        await closeSavedShell(
+          { terminalId: state.terminalId, profile: state.profile, connectionId: state.connectionId },
+          options.websocketUrl
+        )
+      }
     } catch (error) {
       finish(state, 'disconnected')
       throw error
@@ -515,6 +549,7 @@ export function createBrowserTerminal(options: BrowserTerminalOptions): Terminal
         id: `browser-${Date.now().toString(36)}-${++sequence}`,
         restoreKey: startOptions?.restoreKey,
         profile: saved ? saved.profile : options.currentProfile(),
+        connectionId: saved ? (saved.connectionId ?? LOCAL_CONNECTION_ID) : options.currentConnection(),
         terminalId: saved?.terminalId,
         cwd: startOptions?.cwd || '', shell: 'host-shell',
         cols: Math.max(2, Math.round(startOptions?.cols || 80)),
@@ -527,7 +562,7 @@ export function createBrowserTerminal(options: BrowserTerminalOptions): Terminal
       terminals.set(state.id, state)
       state.started = (async () => {
         if (!state.cwd && !saved) {
-          state.cwd = await options.defaultCwd(state.profile).catch(() => '')
+          state.cwd = await options.defaultCwd(state.profile, state.connectionId).catch(() => '')
         }
 
         return dial(state)

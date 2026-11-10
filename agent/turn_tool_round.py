@@ -163,6 +163,11 @@ def run_tool_round(
         with suppress(Exception):
             agent.stream_delta_callback(None)
 
+    # Opt-in (compression.prepare_ahead): when this response put the session near the trigger,
+    # write the next compaction summary while the tools run. No-op otherwise; never raises.
+    from agent.prepared_compaction import maybe_prepare
+    maybe_prepare(agent, messages, origin="tool-batch")
+
     agent._execute_tool_calls(assistant_message, messages, effective_task_id, api_call_count)
     from hermes_cli.observability.shared_metrics_harness import finish_tool_round
 
@@ -287,13 +292,13 @@ def stage_tool_call_message(
                 agent._vprint(f"  ┊ 💬 {clean}")
 
     # Pop thinking-only prefill message(s) before appending (same rationale as the
-    # final-response path). Tool calls after a prefill recovery reset the prefill
-    # counter, so each tool-call success is a fresh start, not a cumulative burn.
+    # final-response path). A landed tool call resets the thinking retry budget even
+    # when recovery used a request-local reminder instead of a legacy prefill row.
     _had_prefill = False
     while messages and isinstance(messages[-1], dict) and messages[-1].get("_thinking_prefill"):
         messages.pop()
         _had_prefill = True
-    if _had_prefill:
+    if _had_prefill or getattr(agent, "_thinking_prefill_retries", 0):
         agent._thinking_prefill_retries = 0
         agent._empty_content_retries = 0
     # Re-arm the post-tool nudge so it can fire on a LATER tool round; a landed tool call
